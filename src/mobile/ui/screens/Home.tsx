@@ -12,7 +12,7 @@ export function Home({ go }: { go: (id: "send" | "receive") => void }) {
   const usd = app.usd(krxNumber(app.balanceSompi));
 
   return (
-    <PullToRefresh onRefresh={() => app.refresh()} refreshing={app.refreshing}>
+    <PullToRefresh onRefresh={() => app.refresh(true)} refreshing={app.refreshing}>
       <div className="mx-auto flex max-w-md flex-col gap-4 p-5 pb-28">
         <Card className="text-center">
           <div className="text-sm text-slate-400">Balance</div>
@@ -29,6 +29,12 @@ export function Home({ go }: { go: (id: "send" | "receive") => void }) {
                   {app.price.changePercent >= 0 ? "▲" : "▼"} {Math.abs(app.price.changePercent).toFixed(2)}%
                 </span>
               )}
+            </div>
+          )}
+          {app.syncing && (
+            <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-500">
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+              Syncing…
             </div>
           )}
         </Card>
@@ -61,8 +67,8 @@ export function Home({ go }: { go: (id: "send" | "receive") => void }) {
 
         <div className="flex items-center justify-between px-1">
           <div className="text-sm font-semibold text-slate-300">Recent activity</div>
-          <button className="text-xs text-emerald-400" onClick={() => app.refresh()}>
-            {app.refreshing ? "…" : "Refresh"}
+          <button className="text-xs text-emerald-400" onClick={() => app.refresh(true)}>
+            {app.refreshing || app.syncing ? "Updating…" : "Refresh"}
           </button>
         </div>
         <div className="flex flex-col gap-2">

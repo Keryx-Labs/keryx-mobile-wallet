@@ -11,6 +11,7 @@ import { initWasm, verifyAddressPrefix } from "../wallet/wasm";
 import { MobileWallet } from "../wallet/mobileWallet";
 import type { AiRequestParams, AiRequestResult, AiResponseFound } from "../wallet/mobileWallet";
 import { fetchIpfsText } from "../ai/ipfs";
+import { saveOverviewCache, loadOverviewCache, clearOverviewCache } from "../walletCache";
 import {
   biometricAvailable,
   isBiometricUnlockEnabled,
@@ -31,6 +32,8 @@ interface AppState {
   receiveAddress: string | null;
   history: HistoryEntry[];
   refreshing: boolean;
+  syncing: boolean;
+  lastSyncTs: number | null;
   biometricReady: boolean;
   biometricEnabled: boolean;
 }
@@ -45,7 +48,7 @@ interface AppCtx extends AppState {
   unlockBiometric: () => Promise<void>;
   enableBiometric: (password: string) => Promise<void>;
   lock: () => void;
-  refresh: () => Promise<void>;
+  refresh: (manual?: boolean) => Promise<void>;
   send: (password: string, dest: string, amountSompi: bigint) => Promise<{ txId: string }>;
   sendWithBiometric: (dest: string, amountSompi: bigint) => Promise<{ txId: string }>;
   reviewSend: typeof buildSendConfirmation;
@@ -88,6 +91,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     receiveAddress: null,
     history: [],
     refreshing: false,
+    syncing: false,
+    lastSyncTs: null,
     biometricReady: false,
     biometricEnabled: false,
   });
@@ -143,24 +148,40 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refresh = useCallback(async () => {
-    if (!wallet || !wallet.isUnlocked) return;
-    patch({ refreshing: true });
-    try {
-      const { balanceSompi, history } = await wallet.overview(50);
-      patch({
-        balanceSompi,
-        history,
-        receiveAddress: wallet.receiveAddress,
-        refreshing: false,
-      });
-    } catch (e) {
-      patch({ refreshing: false, error: e instanceof Error ? e.message : String(e) });
-    }
-  }, [wallet]);
+  const refresh = useCallback(
+    async (manual = false) => {
+      if (!wallet || !wallet.isUnlocked) return;
+      patch(manual ? { refreshing: true, syncing: true } : { syncing: true });
+      try {
+        const { balanceSompi, history } = await wallet.overview(50);
+        patch({
+          balanceSompi,
+          history,
+          receiveAddress: wallet.receiveAddress,
+          refreshing: false,
+          syncing: false,
+          lastSyncTs: Date.now(),
+        });
+        if (wallet.receiveAddress) saveOverviewCache(wallet.receiveAddress, balanceSompi, history);
+      } catch (e) {
+        patch({ refreshing: false, syncing: false, error: e instanceof Error ? e.message : String(e) });
+      }
+    },
+    [wallet]
+  );
 
   const afterUnlock = useCallback(async () => {
-    patch({ phase: "home", receiveAddress: wallet?.receiveAddress ?? null, error: null });
+    const addr = wallet?.receiveAddress ?? null;
+    // Stale-while-revalidate: paint the last-known snapshot instantly (no empty/zero screen), then sync.
+    const cached = addr ? loadOverviewCache(addr) : null;
+    patch({
+      phase: "home",
+      receiveAddress: addr,
+      error: null,
+      balanceSompi: cached?.balanceSompi ?? 0n,
+      history: cached?.history ?? [],
+      lastSyncTs: cached?.ts ?? null,
+    });
     runtime?.autoLock.notifyActivity();
     await refresh();
   }, [wallet, runtime, refresh]);
@@ -290,7 +311,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const wipe = useCallback(async () => {
     await wallet?.wipe();
-    patch({ phase: "onboarding", balanceSompi: 0n, history: [], receiveAddress: null });
+    clearOverviewCache();
+    patch({ phase: "onboarding", balanceSompi: 0n, history: [], receiveAddress: null, lastSyncTs: null });
   }, [wallet]);
 
   const value: AppCtx = {
