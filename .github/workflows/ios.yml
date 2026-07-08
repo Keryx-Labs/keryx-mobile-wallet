@@ -1,0 +1,34 @@
+name: Build iOS (unsigned)
+
+# Manual only — macOS runner minutes are billable on private repos, so this never runs on push.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+      - name: Build web
+        run: npm run build
+      - name: Add iOS platform
+        run: npx cap add ios
+      - name: Configure iOS (Face ID, privacy blur, icon)
+        run: bash scripts/ios-configure.sh
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+      - name: CocoaPods install
+        working-directory: ios/App
+        run: pod install
+      - name: Build (unsigned, simulator SDK)
+        working-directory: ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace -scheme App \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build
