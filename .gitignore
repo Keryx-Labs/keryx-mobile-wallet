@@ -29,3 +29,5 @@ ai_logcat.txt
 # icon preview artifacts (source of truth is assets/ + resources/ios)
 keryx_app_icon.png
 icon_*.png
+shot_*.png
+keryx-wallet-demo.apk

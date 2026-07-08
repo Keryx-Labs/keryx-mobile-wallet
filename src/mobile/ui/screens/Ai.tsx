@@ -6,11 +6,22 @@ import { MIN_AI_REQUEST_PRIORITY_FEE } from "../../ai/payload";
 import { formatKrx, krxToSompi, krxNumber } from "../format";
 import { ensureNotifPermission, notifyAiAnswer } from "../../notifications";
 import type { AiRequestResult } from "../../wallet/mobileWallet";
+import { loadAiHistory, clearAiHistory, type AiHistoryEntry } from "../../ai/history";
 
 type Stage = "compose" | "submitted" | "answered";
 
 const POLL_MS = 12_000;
 const MAX_POLLS = 30; // ~6 min best-effort discovery
+
+function timeAgo(ts: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
 
 export function Ai() {
   const app = useApp();
@@ -30,6 +41,11 @@ export function Ai() {
   const [status, setStatus] = useState<string>("");
   const [answer, setAnswer] = useState<string | null>(null);
   const attempts = useRef(0);
+  const [history, setHistory] = useState<AiHistoryEntry[]>([]);
+  const reloadHistory = useCallback(() => setHistory(loadAiHistory(app.receiveAddress)), [app.receiveAddress]);
+  useEffect(() => {
+    reloadHistory();
+  }, [reloadHistory]);
 
   const model = modelById(modelId) ?? AI_MODELS[0];
   const [showWarn, setShowWarn] = useState<boolean>(() => {
@@ -95,6 +111,7 @@ export function Ai() {
       setStatus("Request sent. Waiting for a miner to answer…");
       setStage("submitted");
       void ensureNotifPermission(app.runtime?.native ?? false);
+      reloadHistory();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
@@ -152,6 +169,17 @@ export function Ai() {
     };
   }, [stage, req, checkOnce]);
 
+  const openHistory = (h: AiHistoryEntry) => {
+    setErr(null);
+    setModelId(h.modelId);
+    setPrompt(h.prompt);
+    setAnswer(null);
+    setReq({ txId: h.txId, requestHash: h.requestHash, feeSompi: BigInt(h.feeSompi) });
+    attempts.current = 0;
+    setStatus("Loading result\u2026");
+    setStage("submitted");
+  };
+
   const reset = () => {
     setStage("compose");
     setReq(null);
@@ -159,6 +187,7 @@ export function Ai() {
     setStatus("");
     setErr(null);
     attempts.current = 0;
+    reloadHistory();
   };
 
   return (
@@ -289,6 +318,40 @@ export function Ai() {
               <div className="mt-3 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-300">{err}</div>
             )}
           </Card>
+
+          {history.length > 0 && (
+            <Card>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-semibold text-slate-100">Recent requests</span>
+                <button
+                  className="text-xs text-slate-500 hover:text-slate-300"
+                  onClick={() => {
+                    clearAiHistory();
+                    reloadHistory();
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="flex flex-col gap-2">
+                {history.map((h) => (
+                  <button
+                    key={h.txId}
+                    onClick={() => openHistory(h)}
+                    className="rounded-2xl bg-slate-800 px-4 py-3 text-left hover:bg-slate-700"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-medium text-emerald-400">
+                        {modelById(h.modelId)?.name ?? "AI request"}
+                      </span>
+                      <span className="shrink-0 text-xs text-slate-500">{timeAgo(h.ts)}</span>
+                    </div>
+                    <div className="mt-0.5 truncate text-sm text-slate-400">{h.prompt}</div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          )}
         </>
       )}
 
@@ -296,6 +359,9 @@ export function Ai() {
         <>
           <Card>
             <div className="mb-1 font-semibold text-slate-100">{model.name}</div>
+            {prompt && (
+              <div className="mb-2 whitespace-pre-wrap break-words text-sm text-slate-300">{prompt}</div>
+            )}
             <div className="text-sm text-slate-400">{status}</div>
             {stage === "submitted" && (
               <div className="mt-3 flex items-center gap-2 text-sm text-emerald-400">

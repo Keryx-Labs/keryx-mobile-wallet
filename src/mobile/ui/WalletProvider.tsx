@@ -12,6 +12,7 @@ import { MobileWallet } from "../wallet/mobileWallet";
 import type { AiRequestParams, AiRequestResult, AiResponseFound } from "../wallet/mobileWallet";
 import { fetchIpfsText } from "../ai/ipfs";
 import { saveOverviewCache, loadOverviewCache, clearOverviewCache } from "../walletCache";
+import { addAiHistory } from "../ai/history";
 import {
   biometricAvailable,
   isBiometricUnlockEnabled,
@@ -80,6 +81,23 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
+// Screenshot/demo bootstrap (build with VITE_DEMO=1). Shows representative data with no real wallet,
+// no unlock and no network dependency — used only to capture marketing screenshots. Never triggers in
+// a normal build (the flag is unset), so it can't affect real users' funds or security.
+const DEMO = (import.meta as any).env?.VITE_DEMO === "1";
+const DEMO_STATE: Partial<AppState> = {
+  phase: "home",
+  receiveAddress: "keryx:qzr8f4k9m2n5p3q7v6x8y0a2c4e6g8j0l2n4r6t8w0y2a4c6e8h1",
+  balanceSompi: 124_536_780_000n, // 1245.3678 KRX
+  biometricEnabled: false,
+  history: [
+    { txId: "9f3a2c7b8e1d4a6f0c2b5e8d1a4f7c0b3e6d9a2c5f8b1e4d7a0c3f6b9e2d5a8c", amountSompi: 50_000_000_000n, isSpend: false, daaScore: 45_902_100n, blockHash: "" },
+    { txId: "b71ce4d92a6f0837c1e5b8d2a4f6c093e7d1a5b8c2f4e6d093a7c1b5e8d2f4a6", amountSompi: -12_000_000_000n, isSpend: true, daaScore: 45_898_050n, blockHash: "" },
+    { txId: "5d2e8a1c4f7b0e3d6a9c2f5b8e1d4a7c0f3b6e9d2a5c8f1b4e7d0a3c6f9b2e5d", amountSompi: 850_000_000n, isSpend: false, daaScore: 45_890_400n, blockHash: "" },
+    { txId: "c3f6b9e2d5a8c1f4b7e0d3a6c9f2b5e8d1a4c7f0b3e6d9a2c5f8b1e4d7a0c3f6", amountSompi: -30_000_000n, isSpend: true, daaScore: 45_884_900n, blockHash: "" },
+  ],
+};
+
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [runtime, setRuntime] = useState<MobileRuntime | null>(null);
   const [wallet, setWallet] = useState<MobileWallet | null>(null);
@@ -125,6 +143,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setRuntime(rt);
         setWallet(w);
         patch({ phase: w.exists() ? "locked" : "onboarding", price: rt.price.current });
+        if (DEMO) patch({ ...DEMO_STATE, lastSyncTs: Date.now() });
         rt.price.subscribe((p) => patch({ price: p }));
         // Biometric probes run in the background, INDEPENDENTLY, so a slow/hanging checkBiometry can
         // never hide the persisted "enabled" flag (which decides whether unlock offers biometrics).
@@ -272,6 +291,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (password: string, params: AiRequestParams) => {
       if (!wallet) throw new Error("Wallet not ready.");
       const r = await wallet.submitAiRequest(password, params);
+      addAiHistory(wallet.receiveAddress, {
+        txId: r.txId,
+        requestHash: r.requestHash,
+        modelId: params.modelId,
+        prompt: params.prompt,
+        ts: Date.now(),
+        feeSompi: r.feeSompi.toString(),
+      });
       await refresh();
       return r;
     },
@@ -290,6 +317,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
       if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
       const r = await wallet.submitAiRequest(pw, params);
+      addAiHistory(wallet.receiveAddress, {
+        txId: r.txId,
+        requestHash: r.requestHash,
+        modelId: params.modelId,
+        prompt: params.prompt,
+        ts: Date.now(),
+        feeSompi: r.feeSompi.toString(),
+      });
       await refresh();
       return r;
     },
