@@ -1,0 +1,28 @@
+<!--
+  iOS App Transport Security (ATS) — paste these keys into ios/App/App/Info.plist AFTER
+  `npx cap add ios` generates the native project. This is the OS-level counterpart to
+  nodeValidation.ts: it forbids arbitrary cleartext and only carves out loopback for dev.
+
+  Production stance: NSAllowsArbitraryLoads = false. wss:// to a TLS node is allowed by default.
+  The loopback exception lets an on-device developer reach ws://localhost; delete it for release.
+
+  Also set in the native project (not here):
+    * Keychain Sharing capability OFF unless needed; Keychain items use
+      kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly (device-only, not iCloud-synced).
+    * "Prevent app snapshot" / redact-on-background handled in JS (autoLock) + a launch-screen cover.
+-->
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <false/>
+    <key>NSExceptionDomains</key>
+    <dict>
+        <key>localhost</key>
+        <dict>
+            <key>NSExceptionAllowsInsecureHTTPLoads</key>
+            <true/>
+            <key>NSIncludesSubdomains</key>
+            <false/>
+        </dict>
+    </dict>
+</dict>

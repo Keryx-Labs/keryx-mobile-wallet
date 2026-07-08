@@ -1,0 +1,19 @@
+node_modules/
+dist/
+# Capacitor-generated native projects (regenerate with `npx cap add`)
+/android/*
+!/android/app/src/main/res/xml/network_security_config.xml
+/ios/*
+!/ios/Info.plist.ats-snippet.xml
+.env
+.env.*
+*.log
+.DS_Store
+
+# Build outputs & local helper artifacts
+*.apk
+ai_build.*
+ai_*.ps1
+ai_screen.png
+ai_logcat.txt
+*.marker
