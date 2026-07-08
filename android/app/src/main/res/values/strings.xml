@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Keryx Wallet</string>
+    <string name="title_activity_main">Keryx Wallet</string>
+    <string name="package_name">app.keryx.wallet</string>
+    <string name="custom_url_scheme">app.keryx.wallet</string>
+</resources>

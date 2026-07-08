@@ -1,10 +1,18 @@
 node_modules/
 dist/
-# Capacitor-generated native projects (regenerate with `npx cap add`)
-/android/*
-!/android/app/src/main/res/xml/network_security_config.xml
-/ios/*
-!/ios/Info.plist.ats-snippet.xml
+# Capacitor native projects: keep the customized source in the repo (minSdk, permissions,
+# FLAG_SECURE, network security config, notifications), but ignore build outputs & machine files.
+/android/.gradle/
+/android/.idea/
+/android/build/
+/android/app/build/
+/android/app/release/
+/android/capacitor-cordova-android-plugins/
+/android/local.properties
+/android/*.iml
+/android/app/src/main/assets/public/
+# iOS project not built in CI yet — keep it out of the repo for now.
+/ios/
 .env
 .env.*
 *.log
