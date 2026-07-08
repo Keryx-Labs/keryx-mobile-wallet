@@ -25,3 +25,7 @@ ai_*.ps1
 ai_screen.png
 ai_logcat.txt
 *.marker
+
+# icon preview artifacts (source of truth is assets/ + resources/ios)
+keryx_app_icon.png
+icon_*.png
