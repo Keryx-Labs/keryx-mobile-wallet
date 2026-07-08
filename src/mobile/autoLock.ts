@@ -20,6 +20,8 @@ export class AutoLock {
   private bgTimer: ReturnType<typeof setTimeout> | null = null;
   private removeAppListener: (() => void) | null = null;
   private started = false;
+  private suppressBg = false;
+  private suppressTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private opts: AutoLockOptions) {}
 
@@ -43,6 +45,19 @@ export class AutoLock {
     this.arm();
   }
 
+  /**
+   * Suppress the very next background-lock (used for USER-INITIATED external navigation — opening
+   * Trade / a community link / the explorer — which briefly backgrounds the app but is not "leaving"
+   * the wallet). Auto-expires so it can never accidentally disable locking for a real background.
+   */
+  suppressNextBackground(windowMs = 4000): void {
+    this.suppressBg = true;
+    if (this.suppressTimer) clearTimeout(this.suppressTimer);
+    this.suppressTimer = setTimeout(() => {
+      this.suppressBg = false;
+    }, windowMs);
+  }
+
   updateInactivityMinutes(minutes: number): void {
     this.opts.inactivityMinutes = minutes;
     this.arm();
@@ -58,6 +73,12 @@ export class AutoLock {
   }
 
   private onBackground(): void {
+    if (this.suppressBg) {
+      this.suppressBg = false;
+      if (this.suppressTimer) clearTimeout(this.suppressTimer);
+      this.suppressTimer = null;
+      return; // intentional external navigation — don't lock
+    }
     const grace = this.opts.backgroundGraceMs ?? 0;
     if (grace <= 0) {
       this.opts.onLock();
@@ -77,7 +98,8 @@ export class AutoLock {
   stop(): void {
     if (this.timer) clearTimeout(this.timer);
     if (this.bgTimer) clearTimeout(this.bgTimer);
-    this.timer = this.bgTimer = null;
+    if (this.suppressTimer) clearTimeout(this.suppressTimer);
+    this.timer = this.bgTimer = this.suppressTimer = null;
     this.removeAppListener?.();
     this.removeAppListener = null;
     this.started = false;

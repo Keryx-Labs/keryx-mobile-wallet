@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useApp } from "../WalletProvider";
 import { Button, Card, Field, copy, shortAddr, Toast } from "../kit";
-import { RESOURCE_LINKS, openExternalUrl } from "../../externalLinks";
+import { RESOURCE_LINKS } from "../../externalLinks";
 import { ResIcon } from "../ResourceIcons";
 
 export function Settings() {
@@ -12,6 +12,7 @@ export function Settings() {
   const [bioBusy, setBioBusy] = useState(false);
   const [bioErr, setBioErr] = useState<string | null>(null);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  const [showAdv, setShowAdv] = useState(false);
   const flash = (m: string) => {
     setToast(m);
     setTimeout(() => setToast(null), 1400);
@@ -49,12 +50,12 @@ export function Settings() {
           <div className="border-t border-slate-800 pt-2">
             {!showBio ? (
               <button className="py-2 text-left text-slate-300" onClick={() => setShowBio(true)}>
-                Enable fingerprint / face unlock
+                Enable biometric unlock
               </button>
             ) : (
               <div className="flex flex-col gap-2 py-2">
                 <div className="text-sm text-slate-400">
-                  Confirm your password, then confirm with your fingerprint or face to enable.
+                  Confirm your password, then verify with biometrics to enable.
                 </div>
                 <Field label="Password" type="password" value={bioPw} onChange={setBioPw} />
                 <Button onClick={enableBio} disabled={bioBusy || bioPw.length === 0}>
@@ -69,16 +70,24 @@ export function Settings() {
         )}
         {app.biometricEnabled && (
           <div className="border-t border-slate-800 py-2 text-sm text-emerald-400">
-            Fingerprint / face unlock is on
+            Biometric unlock enabled
           </div>
         )}
       </Card>
 
       <Card>
-        <div className="mb-1 font-semibold text-slate-100">Network</div>
-        <div className="text-sm text-slate-400">
-          Connected via the Keryx public gateway. No node setup required.
-        </div>
+        <button
+          className="flex w-full items-center justify-between text-left"
+          onClick={() => setShowAdv((v) => !v)}
+        >
+          <span className="font-semibold text-slate-100">Advanced</span>
+          <span className="text-slate-500">{showAdv ? "▾" : "›"}</span>
+        </button>
+        {showAdv && (
+          <div className="mt-2 border-t border-slate-800 pt-3 text-sm text-slate-400">
+            Network: connected via the Keryx public gateway. No node setup required.
+          </div>
+        )}
       </Card>
 
       <Card>
@@ -87,7 +96,7 @@ export function Settings() {
           {RESOURCE_LINKS.map((r) => (
             <button
               key={r.kind}
-              onClick={() => openExternalUrl(r.url)}
+              onClick={() => app.openLink(r.url)}
               aria-label={r.label}
               title={r.label}
               className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-emerald-400"

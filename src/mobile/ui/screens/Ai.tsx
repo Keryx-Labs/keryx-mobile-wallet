@@ -191,7 +191,7 @@ export function Ai() {
   };
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-4 p-5 pb-28">
+    <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-5 pb-28">
       <div className="text-lg font-semibold text-slate-100">AI Inference</div>
 
       {showWarn && (

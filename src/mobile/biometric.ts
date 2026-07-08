@@ -47,10 +47,11 @@ export async function promptBiometric(isNative: boolean, reason: string): Promis
   } catch {
     /* ignore — authenticate() below is the real gate */
   }
+  // Single line only: the OS sheet already shows the app name ("Keryx Wallet"), so we set just the
+  // action as the title and omit the subtitle to avoid the duplicated-title look.
   await BiometricAuth.authenticate({
     reason,
-    androidTitle: "Keryx Wallet",
-    androidSubtitle: reason,
+    androidTitle: reason,
     cancelTitle: "Cancel",
     allowDeviceCredential: false,
   });

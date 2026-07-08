@@ -1,6 +1,5 @@
 import { useApp } from "../WalletProvider";
 import { formatKrx, shortAddr } from "../kit";
-import { openExplorerTx } from "../../index";
 
 export function History() {
   const app = useApp();
@@ -20,7 +19,7 @@ export function History() {
       {app.history.map((h) => (
         <button
           key={h.txId}
-          onClick={() => openExplorerTx(h.txId)}
+          onClick={() => app.openExplorerTx(h.txId)}
           className="flex items-center justify-between rounded-2xl bg-slate-900/60 px-4 py-3 text-left active:scale-[0.99]"
         >
           <div>

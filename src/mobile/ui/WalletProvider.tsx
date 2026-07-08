@@ -13,6 +13,7 @@ import type { AiRequestParams, AiRequestResult, AiResponseFound } from "../walle
 import { fetchIpfsText } from "../ai/ipfs";
 import { saveOverviewCache, loadOverviewCache, clearOverviewCache } from "../walletCache";
 import { addAiHistory } from "../ai/history";
+import { openExternalUrl, openExplorerTx as explorerTxUrl } from "../externalLinks";
 import {
   biometricAvailable,
   isBiometricUnlockEnabled,
@@ -55,6 +56,8 @@ interface AppCtx extends AppState {
   reviewSend: typeof buildSendConfirmation;
   usd: (krx: number) => string | null;
   openTrade: () => Promise<void>;
+  openLink: (url: string) => Promise<void>;
+  openExplorerTx: (txId: string) => Promise<void>;
   donateAddress: string;
   submitAi: (password: string, params: AiRequestParams) => Promise<AiRequestResult>;
   submitAiWithBiometric: (params: AiRequestParams) => Promise<AiRequestResult>;
@@ -366,7 +369,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     sendWithBiometric,
     reviewSend: buildSendConfirmation,
     usd: (krx: number) => krxToUsd(krx, s.price),
-    openTrade: async () => runtime?.openTrade(),
+    openTrade: async () => {
+      runtime?.autoLock.suppressNextBackground();
+      await runtime?.openTrade();
+    },
+    openLink: async (url: string) => {
+      runtime?.autoLock.suppressNextBackground();
+      await openExternalUrl(url);
+    },
+    openExplorerTx: async (txId: string) => {
+      runtime?.autoLock.suppressNextBackground();
+      await explorerTxUrl(txId);
+    },
     donateAddress: runtime?.donateAddress ?? "",
     submitAi,
     submitAiWithBiometric,

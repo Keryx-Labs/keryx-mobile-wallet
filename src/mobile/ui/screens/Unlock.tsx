@@ -44,7 +44,7 @@ export function Unlock() {
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-5 p-6">
       <div className="text-center">
         <div className="text-2xl font-bold text-emerald-400">Welcome back</div>
-        <div className="mt-1 text-slate-400">Unlock your Keryx wallet</div>
+        <div className="mt-1 text-slate-400">Unlock to continue</div>
       </div>
       <Card>
         <div className="flex flex-col gap-3">
@@ -54,7 +54,7 @@ export function Unlock() {
           </Button>
           {app.biometricEnabled && (
             <Button variant="ghost" onClick={doBiometric}>
-              Use fingerprint / face
+              Use biometrics
             </Button>
           )}
         </div>
