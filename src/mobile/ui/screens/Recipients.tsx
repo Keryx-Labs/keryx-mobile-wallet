@@ -20,6 +20,23 @@ export function Recipients({
 
   const [editing, setEditing] = useState<string | null>(null); // address being labeled
   const [label, setLabel] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [newAddr, setNewAddr] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  const commitAdd = () => {
+    const addr = newAddr.trim();
+    if (!app.wallet?.validateAddress(addr)) {
+      setErr("That isn't a valid Keryx address.");
+      return;
+    }
+    saveContact(app.receiveAddress, addr, label);
+    setAdding(false);
+    setNewAddr("");
+    setLabel("");
+    setErr(null);
+    reload();
+  };
 
   const startSave = (address: string, existing?: Contact) => {
     setEditing(address);
@@ -43,6 +60,47 @@ export function Recipients({
             Close
           </button>
         </div>
+
+        {!adding && !editing && (
+          <button
+            onClick={() => {
+              setAdding(true);
+              setNewAddr("");
+              setLabel("");
+              setErr(null);
+            }}
+            className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-800 py-2.5 text-sm text-emerald-400 hover:bg-slate-700"
+          >
+            <span className="text-base leading-none">+</span> Add recipient
+          </button>
+        )}
+
+        {adding && (
+          <div className="mb-4 rounded-2xl bg-slate-800 p-3">
+            <input
+              autoFocus
+              value={newAddr}
+              onChange={(e) => setNewAddr(e.target.value)}
+              placeholder="keryx:\u2026 wallet address"
+              className="mb-2 w-full rounded-xl bg-slate-700 px-3 py-2 font-mono text-sm text-slate-100 outline-none"
+            />
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Name (e.g. Valera, NonKYC exchange)"
+              className="mb-2 w-full rounded-xl bg-slate-700 px-3 py-2 text-sm text-slate-100 outline-none"
+            />
+            {err && <div className="mb-2 text-xs text-red-300">{err}</div>}
+            <div className="flex gap-2">
+              <Button variant="ghost" className="flex-1" onClick={() => setAdding(false)}>
+                Cancel
+              </Button>
+              <Button className="flex-1" disabled={!newAddr.trim() || !label.trim()} onClick={commitAdd}>
+                Save
+              </Button>
+            </div>
+          </div>
+        )}
 
         {editing && (
           <div className="mb-4 rounded-2xl bg-slate-800 p-3">

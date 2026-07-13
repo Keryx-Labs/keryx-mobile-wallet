@@ -61,21 +61,40 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
         </div>
 
         <Card className="mb-4 bg-slate-800/60">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-400">Coins (UTXOs)</span>
-            <span className="font-mono text-emerald-400">{loading ? "…" : info?.matureCount ?? 0}</span>
-          </div>
-          {info && (
-            <>
-              <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
-                <span>Total</span>
-                <span className="font-mono">{formatKrx(info.totalMatureSompi)} KRX</span>
+          {loading ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div className="h-3 w-28 animate-pulse rounded bg-slate-700" />
+                <div className="h-3 w-10 animate-pulse rounded bg-slate-700" />
               </div>
-              {info.immatureCount > 0 && (
-                <div className="mt-1 text-xs text-slate-500">
-                  {info.immatureCount} mining coin{info.immatureCount === 1 ? "" : "s"} still maturing —
-                  will be included on a later run.
-                </div>
+              <div className="flex items-center justify-between">
+                <div className="h-3 w-14 animate-pulse rounded bg-slate-700" />
+                <div className="h-3 w-24 animate-pulse rounded bg-slate-700" />
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-xs text-emerald-400">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                Checking your coins…
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-400">Coins (UTXOs)</span>
+                <span className="font-mono text-emerald-400">{info?.matureCount ?? 0}</span>
+              </div>
+              {info && (
+                <>
+                  <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+                    <span>Total</span>
+                    <span className="font-mono">{formatKrx(info.totalMatureSompi)} KRX</span>
+                  </div>
+                  {info.immatureCount > 0 && (
+                    <div className="mt-1 text-xs text-slate-500">
+                      {info.immatureCount} mining coin{info.immatureCount === 1 ? "" : "s"} still maturing —
+                      will be included on a later run.
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

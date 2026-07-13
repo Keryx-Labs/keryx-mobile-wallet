@@ -73,20 +73,6 @@ export function Settings() {
             Biometric unlock enabled
           </div>
         )}
-        <div className="border-t border-slate-800 pt-2">
-          <label className="flex items-center justify-between py-2">
-            <span className="text-slate-300">I own a miner</span>
-            <input
-              type="checkbox"
-              checked={app.minerMode}
-              onChange={(e) => app.setMinerMode(e.target.checked)}
-              className="h-5 w-5 accent-emerald-500"
-            />
-          </label>
-          <div className="text-xs text-slate-500">
-            Adds a subtle Consolidate action on the wallet screen to combine many small mining payouts.
-          </div>
-        </div>
       </Card>
 
       <Card>
@@ -98,8 +84,22 @@ export function Settings() {
           <span className="text-slate-500">{showAdv ? "▾" : "›"}</span>
         </button>
         {showAdv && (
-          <div className="mt-2 border-t border-slate-800 pt-3 text-sm text-slate-400">
-            Network: connected via the Keryx public gateway. No node setup required.
+          <div className="mt-2 border-t border-slate-800 pt-3">
+            <div className="text-sm text-slate-400">
+              Network: connected via the Keryx public gateway. No node setup required.
+            </div>
+            <label className="mt-3 flex items-center justify-between border-t border-slate-800 py-2">
+              <span className="text-slate-300">I own a miner</span>
+              <input
+                type="checkbox"
+                checked={app.minerMode}
+                onChange={(e) => app.setMinerMode(e.target.checked)}
+                className="h-5 w-5 accent-emerald-500"
+              />
+            </label>
+            <div className="text-xs text-slate-500">
+              Adds a subtle Consolidate action on the wallet screen to combine many small mining payouts.
+            </div>
           </div>
         )}
       </Card>
