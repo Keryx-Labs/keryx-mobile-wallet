@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useApp } from "../WalletProvider";
 import { Button, Card, copy, formatKrx, krxNumber, shortAddr, Toast, PullToRefresh } from "../kit";
 import { Consolidate } from "./Consolidate";
+import { ConsolidateRow } from "./ConsolidateRow";
 
 export function Home({ go }: { go: (id: "send" | "receive") => void }) {
   const app = useApp();
@@ -67,14 +68,7 @@ export function Home({ go }: { go: (id: "send" | "receive") => void }) {
           Trade KRX ↗
         </Button>
 
-        {app.minerMode && (
-          <button
-            onClick={() => setShowConsolidate(true)}
-            className="text-center text-xs text-slate-500 hover:text-emerald-400"
-          >
-            Consolidate coins
-          </button>
-        )}
+        {app.minerMode && <ConsolidateRow onOpenModal={() => setShowConsolidate(true)} />}
 
         <div className="flex items-center justify-between px-1">
           <div className="text-sm font-semibold text-slate-300">Recent activity</div>
