@@ -31,13 +31,6 @@ browser APIs (localStorage, IndexedDB, WebSocket, WebCrypto). Capacitor runs tha
 native WebView, so the SDK and crypto are reused verbatim — no re‑implementation. Full rationale and
 the Tauri‑Mobile / React‑Native / Flutter / native comparison: [`docs/MOBILE_ARCHITECTURE.md`](./docs/MOBILE_ARCHITECTURE.md).
 
-## Features (MVP target)
-
-Create wallet · import 24‑word recovery phrase · encrypted local storage · password + biometric
-unlock · auto‑lock (inactivity + on background) · dashboard balance · receive address + QR · send
-with confirm‑before‑sign · configurable `wss://` node endpoint · transaction history · Android & iOS
-builds.
-
 ## Quick start
 
 ```bash
@@ -53,10 +46,12 @@ Self‑custodial, seed encrypted at rest (Argon2 → XChaCha20‑Poly1305, via t
 secrets never logged, Keychain/Keystore secure storage, and a strict `wss://` transport rule. See
 [`docs/MOBILE_SECURITY.md`](./docs/MOBILE_SECURITY.md).
 
-## Node requirement
+## Network
 
-A Keryx node reachable over **`wss://`** (mobile blocks plaintext to remote hosts), Borsh wRPC
-(default port 23110), started with `--utxoindex`.
+By default the app uses the **Keryx REST Gateway** (`keryx-labs.com/api/v1`) over HTTPS — no node
+setup for users; balances, history and broadcast go through the gateway while transactions are built
+and **signed locally**. An optional Advanced/Developer path can target a direct node over **`wss://`**
+(Borsh wRPC, default port 23110, started with `--utxoindex`); mobile blocks plaintext to remote hosts.
 
 ## Layout
 

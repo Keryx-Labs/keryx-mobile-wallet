@@ -2,7 +2,7 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
-## [0.1.0] — Unreleased (initial mobile scaffold)
+## [0.1.0] — 2026-07-13 (first working Android build)
 
 Mobile (Android/iOS) build of the Keryx Wallet, on **Capacitor + React**, reusing the desktop
 wallet‑core (WASM SDK) unchanged.
@@ -101,3 +101,66 @@ wallet‑core (WASM SDK) unchanged.
   for the APK; apply `FLAG_SECURE` / `allowBackup=false` / ATS as documented.
 - HD scan currently uses a fixed window (20 receive + 20 change); extend to a proper gap-limit scan.
 - On-device pass: biometric plugin binding, WKWebView eviction soak (iOS), real send against mainnet.
+
+### Added (increment 5 — AI inference tab)
+- **On-chain AI inference client** (`src/mobile/ai/`, `ui/screens/Ai*.tsx`): pick a model, pay in
+  KRX, and get a verifiable answer. The app builds & **signs an `AiRequest`** (subnetwork `0300`)
+  locally, broadcasts via the gateway, discovers the miner's answer through `GET /api/v1/infer`
+  (matched by tx id), fetches the result body from the Keryx IPFS gateway (`/ipfs/<cid>`), and fires
+  a **local notification** when it's ready.
+- **AI request history** (`ai/history.ts`, localStorage `keryx.ai.history.v1`): past interactions are
+  listed and tappable to reload the answer; a one-time cost warning that can be dismissed.
+- **Demo/screenshot flag** (`VITE_DEMO`) that bootstraps a throwaway state for store/marketing shots.
+
+### Added (increment 6 — UX polish + iOS parity config)
+- **UX**: de-duplicated the unlock/biometric prompt, widened the AI layout, moved the Network endpoint
+  into **Advanced/Developer**, reworded the biometric toggle to "Biometric unlock enabled", and
+  stopped re-locking the wallet when opening external links (Trade / X / website / explorer). Only
+  launch-unlock, revealing the recovery phrase, signing/sending, consolidating and submitting an AI
+  request now require authorization.
+- **Wallet data caching** (`walletCache.ts`, `keryx.cache.overview.v1`): last balance/history render
+  instantly on launch, then a background sync (stale-while-revalidate).
+- **iOS parity config** (`scripts/ios-configure.sh`, `resources/ios/`): Face ID
+  (`NSFaceIDUsageDescription`), app-switcher privacy blur (`AppDelegate.swift` — iOS has no
+  `FLAG_SECURE`), camera usage string, the iOS app icon set, and a manual `workflow_dispatch`-only
+  macOS build workflow + `docs/IOS_BUILD.md`.
+
+### Added (increment 7 — Consolidate, Send QR scanner, address book, official icon)
+- **Consolidate (compound UTXOs)** for miners, reproducing the official desktop behavior researched
+  from `keryx-desktop-wallet`: a **self-send** that sweeps the largest UTXOs into a single output,
+  spending only the network fee. `signer.ts` adds `consolidateInfo()`/`signConsolidate()` with
+  largest-first selection, `MAX_TX_INPUTS = 80`, mass-based min fee, and a **1000-DAA coinbase
+  maturity** filter so immature mining outputs are skipped. Gated behind an opt-in **"I own a miner"**
+  setting (`minerMode.ts`, `keryx.minerMode.v1`).
+- **Send QR scanner** (`qr.ts`, `ui/screens/QrScanner.tsx`): scan a recipient with the camera; parses
+  and validates Keryx targets and rejects wrong-network addresses. Never auto-sends.
+- **Address book** (`addressBook.ts`, `keryx.addrbook.v1`): local-only saved contacts with labels +
+  recent recipients, save-after-send, add/edit/delete, dedupe. No phone-contacts access.
+- **Official Keryx app icon** (Android adaptive foreground/background/monochrome + legacy, all
+  densities; notification icon `ic_stat_keryx`; iOS `AppIcon.appiconset`) generated from branding.
+
+### Changed (increment 8 — QR native-lib removal, Consolidate multi-batch + UI)
+- **Removed the MLKit barcode scanner** in favor of a **pure-JS `jsQR`** decode over the WebView
+  camera (`@capacitor/camera` for permission). This drops the native `.so` libraries that triggered
+  Android's **16 KB page-size compatibility warning** and ~20 MB of bloat — the APK is back to ~14 MB
+  with no native barcode libs.
+- **Consolidate is now multi-batch**: one tap consolidates the **entire eligible set**, not just the
+  first 80. `MobileWallet.consolidate(password, onProgress)` authorizes once, then loops batch by
+  batch — broadcasting, then `waitForBatchConfirmed()` polls the gateway UTXO set until the batch's
+  inputs are consumed — until ≤1 mature coin remains, matching the desktop `waitForInputsConsumed`
+  loop. Returns `{ txids, batches, remaining, totalInputs, totalFeeSompi }`.
+- **Consolidate UI**: a subtle wallet-screen row (`ConsolidateRow.tsx`) — label + merge icon + live
+  UTXO **count pill** — with an inline prepare → biometric → broadcast flow and a background count
+  refresh; the modal (`Consolidate.tsx`) shows a loading skeleton and live `Batch N · M left`
+  progress. The "I own a miner" toggle moved to **Advanced**; recipient add/edit/delete lives in the
+  Recipients picker.
+- App icon refined to a **full-bleed circular badge** rendered from the official `logo.png`.
+
+### Tests
+- Added suites for QR parsing, address book, AI history, wallet cache, Consolidate sizing, and the
+  **multi-batch Consolidate loop** (a stateful fake chain that consumes each batch's inputs and adds
+  the change output; asserts multiple batches, strictly decreasing progress, and ≤1 UTXO left).
+  **86 tests pass; `tsc --noEmit` clean.**
+
+### Shipped
+- Built and installed on-device (Pixel 9). Android CI (`.github/workflows/android.yml`) green on push.
