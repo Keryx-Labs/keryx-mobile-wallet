@@ -14,11 +14,11 @@ dependencies {
     implementation project(':capacitor-app')
     implementation project(':capacitor-app-launcher')
     implementation project(':capacitor-browser')
+    implementation project(':capacitor-camera')
     implementation project(':capacitor-clipboard')
     implementation project(':capacitor-inappbrowser')
-    implementation project(':capacitor-preferences')
     implementation project(':capacitor-local-notifications')
-    implementation project(':capacitor-mlkit-barcode-scanning')
+    implementation project(':capacitor-preferences')
 
 }
 

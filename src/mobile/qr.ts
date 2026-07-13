@@ -1,17 +1,14 @@
-// QR scanning for the Send screen. Uses the native camera (MLKit) to read a QR, then parses a raw
-// Keryx address or a `keryx:<addr>?amount=…` payment URI. Scanning NEVER sends — it only returns the
-// parsed target; the caller validates it and fills the recipient field, and the normal confirm flow
-// (password / biometric) still applies. Native-only; the plugin is dynamically imported.
+// QR scanning for Send — pure-JS decode (jsQR) over the WebView camera. No native scanner library
+// (keeps the APK small and avoids the 16 KB page-alignment issue MLKit's .so files caused). The
+// actual camera preview + decode loop lives in the QrScanner React component; here we keep the pure,
+// testable parser and the camera-permission helper. Scanning NEVER sends — it only returns a target.
 
 export interface ScannedTarget {
   address: string;
   amountKrx?: string;
 }
 
-/**
- * Parse a scanned string into a Keryx target. Accepts a bare address ("keryx:q…") or a payment URI
- * ("keryx:q…?amount=1.5"). Pure + testable; validation of the address itself is done by the caller.
- */
+/** Parse a scanned string into a Keryx target: bare address or `keryx:<addr>?amount=…`. Pure/testable. */
 export function parseKeryxTarget(raw: string): ScannedTarget {
   let s = (raw || "").trim();
   let amountKrx: string | undefined;
@@ -26,26 +23,20 @@ export function parseKeryxTarget(raw: string): ScannedTarget {
       /* ignore malformed query */
     }
   }
-  // Normalize an uppercase scheme (KERYX:...) to lowercase scheme only; leave the payload untouched.
   if (/^keryx:/i.test(s)) s = "keryx:" + s.slice(6);
   return { address: s, amountKrx };
 }
 
-/**
- * Open the native camera and scan one QR. Returns the raw string, or null if the user cancelled.
- * Throws a friendly error if scanning is unavailable or camera permission is denied.
- */
-export async function scanQrCode(isNative: boolean): Promise<string | null> {
-  if (!isNative) throw new Error("QR scanning is only available on a device.");
-  const mod = await import("@capacitor-mlkit/barcode-scanning");
-  const { BarcodeScanner, BarcodeFormat } = mod;
-  const supported = await BarcodeScanner.isSupported().catch(() => ({ supported: false } as any));
-  if (!(supported as any).supported) throw new Error("QR scanning isn't available on this device.");
-
-  const perm = await BarcodeScanner.requestPermissions();
-  if (perm.camera !== "granted" && perm.camera !== "limited") {
-    throw new Error("Camera access is needed to scan. Enable it in Settings, then try again.");
+/** Request camera permission (native runtime prompt) before opening getUserMedia. */
+export async function ensureCameraPermission(isNative: boolean): Promise<boolean> {
+  if (!isNative) return true; // web: getUserMedia prompts on its own
+  try {
+    const { Camera } = await import("@capacitor/camera");
+    const cur = await Camera.checkPermissions();
+    if (cur.camera === "granted" || cur.camera === "limited") return true;
+    const req = await Camera.requestPermissions({ permissions: ["camera"] });
+    return req.camera === "granted" || req.camera === "limited";
+  } catch {
+    return true; // fall through to the getUserMedia prompt
   }
-  const { barcodes } = await BarcodeScanner.scan({ formats: [BarcodeFormat.QrCode] });
-  return barcodes[0]?.rawValue ?? null;
 }

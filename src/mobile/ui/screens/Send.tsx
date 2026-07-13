@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useApp } from "../WalletProvider";
 import { Button, Card, Field, formatKrx, krxToSompi } from "../kit";
-import { scanQrCode, parseKeryxTarget } from "../../qr";
+import { parseKeryxTarget } from "../../qr";
+import { QrScanner } from "./QrScanner";
 import { Recipients } from "./Recipients";
 import { saveContact } from "../../addressBook";
 
@@ -19,6 +20,7 @@ export function Send({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [txId, setTxId] = useState("");
   const [showRecipients, setShowRecipients] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [saveLabel, setSaveLabel] = useState("");
   const [savedContact, setSavedContact] = useState(false);
 
@@ -75,21 +77,16 @@ export function Send({ onDone }: { onDone: () => void }) {
     }
   };
 
-  const scan = async () => {
-    setErr(null);
-    try {
-      const raw = await scanQrCode(app.runtime?.native ?? false);
-      if (!raw) return; // cancelled
-      const t = parseKeryxTarget(raw);
-      if (!app.wallet?.validateAddress(t.address)) {
-        setErr("That QR code isn't a valid Keryx address.");
-        return;
-      }
-      setDest(t.address);
-      if (t.amountKrx) setAmount(t.amountKrx);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+  const handleScan = (raw: string) => {
+    setShowScanner(false);
+    const t = parseKeryxTarget(raw);
+    if (!app.wallet?.validateAddress(t.address)) {
+      setErr("That QR code isn't a valid Keryx address.");
+      return;
     }
+    setErr(null);
+    setDest(t.address);
+    if (t.amountKrx) setAmount(t.amountKrx);
   };
 
   return (
@@ -104,7 +101,13 @@ export function Send({ onDone }: { onDone: () => void }) {
           <div className="flex flex-col gap-3">
             <Field label="To address" value={dest} onChange={setDest} placeholder="keryx:…" mono />
             <div className="flex gap-5">
-              <button onClick={scan} className="text-sm text-emerald-400">
+              <button
+                onClick={() => {
+                  setErr(null);
+                  setShowScanner(true);
+                }}
+                className="text-sm text-emerald-400"
+              >
                 Scan QR code
               </button>
               <button onClick={() => setShowRecipients(true)} className="text-sm text-emerald-400">
@@ -207,6 +210,8 @@ export function Send({ onDone }: { onDone: () => void }) {
           onClose={() => setShowRecipients(false)}
         />
       )}
+
+      {showScanner && <QrScanner onResult={handleScan} onClose={() => setShowScanner(false)} />}
     </div>
   );
 }

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Keryx Wallet \u2014 Android/iOS build (Capacitor + React), reusing the desktop wallet-core (WASM SDK).",
+  "description": "Keryx Wallet — Android/iOS build (Capacitor + React), reusing the desktop wallet-core (WASM SDK).",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -23,17 +23,18 @@
     "@capacitor/app": "^6.0.1",
     "@capacitor/app-launcher": "^6.0.3",
     "@capacitor/browser": "^6.0.4",
+    "@capacitor/camera": "^6.0.0",
     "@capacitor/clipboard": "^6.0.2",
     "@capacitor/core": "^6.1.2",
     "@capacitor/inappbrowser": "^1.0.0",
     "@capacitor/ios": "^6.1.2",
+    "@capacitor/local-notifications": "^6.1.0",
     "@capacitor/preferences": "^6.0.2",
     "@noble/hashes": "^1.4.0",
+    "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@capacitor/local-notifications": "^6.1.0",
-    "@capacitor-mlkit/barcode-scanning": "^6.0.0"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",
