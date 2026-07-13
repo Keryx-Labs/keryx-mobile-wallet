@@ -44,8 +44,8 @@ export function createChainProvider(
 }
 
 export { RestGatewayProvider, DEFAULT_GATEWAY } from "./restGateway";
-export { signSpend, MAX_TX_INPUTS, KERYX_MIN_FEE } from "./signer";
-export type { SpendRequest, SignedSpend } from "./signer";
+export { signSpend, signConsolidate, consolidateInfo, MAX_TX_INPUTS, KERYX_MIN_FEE, COINBASE_MATURITY } from "./signer";
+export type { SpendRequest, SignedSpend, ConsolidateRequest, ConsolidateInfo } from "./signer";
 export { buildBroadcastBody, stringifyBroadcast, splitScriptPublicKey } from "./broadcast";
 export type { BroadcastTx, BroadcastInput, BroadcastOutput, SerializableTx } from "./broadcast";
 export type {

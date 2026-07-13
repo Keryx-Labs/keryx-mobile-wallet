@@ -4,7 +4,9 @@
 
 import * as kaspa from "../../sdk/kaspa.js";
 import type { ChainProvider, HistoryEntry, Utxo } from "../chain";
-import { signSpend } from "../chain";
+import { signSpend, signConsolidate, consolidateInfo } from "../chain";
+import type { ConsolidateInfo } from "../chain";
+export type { ConsolidateInfo } from "../chain";
 import type { SecureStore } from "../secureStore";
 import { deriveAddresses, deriveKeyMap, firstReceiveAddress } from "./derivation";
 import { signAiRequest } from "../ai/tx";
@@ -21,6 +23,13 @@ export interface MobileWalletOptions {
 export interface SendResult {
   txId: string;
   feeSompi: bigint;
+}
+
+export interface ConsolidateResult {
+  txId: string;
+  feeSompi: bigint;
+  inputCount: number;
+  remaining: number; // mature UTXOs still needing consolidation after this batch (0/1 = done)
 }
 
 export interface AiRequestParams {
@@ -221,6 +230,47 @@ export class MobileWallet {
     const res = await this.chain.broadcast(signed.broadcastBody);
     if (!res.ok) throw new Error(res.error ?? "Broadcast failed.");
     return { txId: res.transactionId || signed.txId, feeSompi: signed.feeSompi };
+  }
+
+  /** Read-only consolidate sizing for the confirm screen (no keys, no broadcast). */
+  async consolidatePreview(): Promise<ConsolidateInfo> {
+    if (!this.addresses) throw new Error("Wallet is locked.");
+    const [utxos, info] = await Promise.all([this.gatherUtxos(), this.chain.getInfo()]);
+    return consolidateInfo(utxos, info.lastDaaScore);
+  }
+
+  /**
+   * Consolidate ONE batch: sweep the largest (<=80) mature UTXOs into a single UTXO back to your own
+   * address. Reproduces the official desktop wallet's compound (self-send, largest-first, coinbase
+   * maturity honored, mass fee). Signs locally; requires the password. Broadcast happens here, so the
+   * caller must have already gotten explicit user authorization.
+   */
+  async consolidate(password: string): Promise<ConsolidateResult> {
+    if (!this.addresses) throw new Error("Wallet is locked.");
+    const phrase = this.revealMnemonic(password); // wrong password throws here
+    const keyMap = deriveKeyMap(phrase, this.networkId, this.scanWindow);
+
+    const [utxos, info] = await Promise.all([this.gatherUtxos(), this.chain.getInfo()]);
+    if (utxos.length === 0) throw new Error("No coins (UTXOs) to consolidate.");
+
+    const signed = signConsolidate({
+      utxos,
+      keys: Array.from(keyMap.values()),
+      changeAddress: this.addresses.receive[0],
+      networkId: this.networkId,
+      currentDaaScore: info.lastDaaScore,
+    });
+
+    const res = await this.chain.broadcast(signed.broadcastBody);
+    if (!res.ok) throw new Error(res.error ?? "Broadcast failed.");
+
+    const preview = consolidateInfo(utxos, info.lastDaaScore);
+    return {
+      txId: res.transactionId || signed.txId,
+      feeSompi: signed.feeSompi,
+      inputCount: signed.inputCount,
+      remaining: preview.remainingAfter,
+    };
   }
 
   /** Gather spendable UTXOs from active addresses only (fast summary pass, then parallel UTXO pulls). */

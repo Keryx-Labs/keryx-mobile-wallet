@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 C:/Users/hambi/KRX_miner/keryx-mobile-wallet
+
+ ✓ tests/consolidate.test.ts (3 tests) 153ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  12:40:32
+   Duration  29.49s (transform 22.46s, setup 0ms, collect 22.56s, tests 153ms, environment 0ms, prepare 230ms)
+

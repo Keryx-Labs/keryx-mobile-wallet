@@ -14,6 +14,9 @@ import { fetchIpfsText } from "../ai/ipfs";
 import { saveOverviewCache, loadOverviewCache, clearOverviewCache } from "../walletCache";
 import { addAiHistory } from "../ai/history";
 import { openExternalUrl, openExplorerTx as explorerTxUrl } from "../externalLinks";
+import { isMinerMode, setMinerMode as persistMinerMode } from "../minerMode";
+import { addRecent } from "../addressBook";
+import type { ConsolidateInfo, ConsolidateResult } from "../wallet/mobileWallet";
 import {
   biometricAvailable,
   isBiometricUnlockEnabled,
@@ -38,6 +41,7 @@ interface AppState {
   lastSyncTs: number | null;
   biometricReady: boolean;
   biometricEnabled: boolean;
+  minerMode: boolean;
 }
 
 interface AppCtx extends AppState {
@@ -63,6 +67,10 @@ interface AppCtx extends AppState {
   submitAiWithBiometric: (params: AiRequestParams) => Promise<AiRequestResult>;
   findAiResponse: (requestHash: string) => Promise<AiResponseFound | null>;
   fetchAiResult: (cid: string) => Promise<string>;
+  setMinerMode: (on: boolean) => void;
+  consolidatePreview: () => Promise<ConsolidateInfo>;
+  consolidate: (password: string) => Promise<ConsolidateResult>;
+  consolidateWithBiometric: () => Promise<ConsolidateResult>;
   wipe: () => Promise<void>;
 }
 
@@ -116,6 +124,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     lastSyncTs: null,
     biometricReady: false,
     biometricEnabled: false,
+    minerMode: isMinerMode(),
   });
   const patch = (p: Partial<AppState>) => setS((prev) => ({ ...prev, ...p }));
 
@@ -266,6 +275,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     async (password: string, dest: string, amountSompi: bigint) => {
       if (!wallet) throw new Error("Wallet not ready.");
       const r = await wallet.send(password, dest, amountSompi);
+      addRecent(wallet.receiveAddress, dest);
       await refresh();
       return { txId: r.txId };
     },
@@ -284,6 +294,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       }
       if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
       const r = await wallet.send(pw, dest, amountSompi);
+      addRecent(wallet.receiveAddress, dest);
       await refresh();
       return { txId: r.txId };
     },
@@ -347,6 +358,41 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [runtime]
   );
 
+  const setMinerMode = useCallback((on: boolean) => {
+    persistMinerMode(on);
+    patch({ minerMode: on });
+  }, []);
+
+  const consolidatePreview = useCallback(async () => {
+    if (!wallet) throw new Error("Wallet not ready.");
+    return wallet.consolidatePreview();
+  }, [wallet]);
+
+  const consolidate = useCallback(
+    async (password: string) => {
+      if (!wallet) throw new Error("Wallet not ready.");
+      const r = await wallet.consolidate(password);
+      await refresh();
+      return r;
+    },
+    [wallet, refresh]
+  );
+
+  const consolidateWithBiometric = useCallback(async () => {
+    if (!wallet || !runtime) throw new Error("Wallet not ready.");
+    const store = secureStore(runtime.native);
+    let pw: string | null;
+    try {
+      pw = await unlockWithBiometrics(store, runtime.native);
+    } catch (e) {
+      throw new Error(friendlyBiometryError(e));
+    }
+    if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
+    const r = await wallet.consolidate(pw);
+    await refresh();
+    return r;
+  }, [wallet, runtime, refresh]);
+
   const wipe = useCallback(async () => {
     await wallet?.wipe();
     clearOverviewCache();
@@ -386,6 +432,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     submitAiWithBiometric,
     findAiResponse,
     fetchAiResult,
+    setMinerMode,
+    consolidatePreview,
+    consolidate,
+    consolidateWithBiometric,
     wipe,
   };
 

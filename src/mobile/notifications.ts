@@ -39,6 +39,7 @@ export async function notifyAiAnswer(
           id: Math.floor(Date.now() % 2_000_000_000),
           title: "Your AI answer is ready",
           body: info.model ? `${info.model} responded — tap to view.` : "Tap to view the result.",
+          smallIcon: "ic_stat_keryx",
         },
       ],
     });

@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useApp } from "../WalletProvider";
 import { Button, Card, copy, formatKrx, krxNumber, shortAddr, Toast, PullToRefresh } from "../kit";
+import { Consolidate } from "./Consolidate";
 
 export function Home({ go }: { go: (id: "send" | "receive") => void }) {
   const app = useApp();
   const [toast, setToast] = useState<string | null>(null);
+  const [showConsolidate, setShowConsolidate] = useState(false);
   const flash = (m: string) => {
     setToast(m);
     setTimeout(() => setToast(null), 1400);
@@ -65,6 +67,15 @@ export function Home({ go }: { go: (id: "send" | "receive") => void }) {
           Trade KRX ↗
         </Button>
 
+        {app.minerMode && (
+          <button
+            onClick={() => setShowConsolidate(true)}
+            className="text-center text-xs text-slate-500 hover:text-emerald-400"
+          >
+            Consolidate coins
+          </button>
+        )}
+
         <div className="flex items-center justify-between px-1">
           <div className="text-sm font-semibold text-slate-300">Recent activity</div>
           <button className="text-xs text-emerald-400" onClick={() => app.refresh(true)}>
@@ -89,6 +100,7 @@ export function Home({ go }: { go: (id: "send" | "receive") => void }) {
         </div>
         <Toast msg={toast} />
       </div>
+      {showConsolidate && <Consolidate onClose={() => setShowConsolidate(false)} />}
     </PullToRefresh>
   );
 }

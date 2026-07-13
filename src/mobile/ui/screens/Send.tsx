@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useApp } from "../WalletProvider";
 import { Button, Card, Field, formatKrx, krxToSompi } from "../kit";
+import { scanQrCode, parseKeryxTarget } from "../../qr";
+import { Recipients } from "./Recipients";
+import { saveContact } from "../../addressBook";
 
 const MIN_FEE = 30_000_000n; // 0.3 KRX display estimate (enforced by the signer)
 
@@ -15,6 +18,9 @@ export function Send({ onDone }: { onDone: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [txId, setTxId] = useState("");
+  const [showRecipients, setShowRecipients] = useState(false);
+  const [saveLabel, setSaveLabel] = useState("");
+  const [savedContact, setSavedContact] = useState(false);
 
   const review = () => {
     setErr(null);
@@ -69,6 +75,23 @@ export function Send({ onDone }: { onDone: () => void }) {
     }
   };
 
+  const scan = async () => {
+    setErr(null);
+    try {
+      const raw = await scanQrCode(app.runtime?.native ?? false);
+      if (!raw) return; // cancelled
+      const t = parseKeryxTarget(raw);
+      if (!app.wallet?.validateAddress(t.address)) {
+        setErr("That QR code isn't a valid Keryx address.");
+        return;
+      }
+      setDest(t.address);
+      if (t.amountKrx) setAmount(t.amountKrx);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 p-5 pb-28">
       <div className="flex items-center gap-3">
@@ -80,6 +103,14 @@ export function Send({ onDone }: { onDone: () => void }) {
         <Card>
           <div className="flex flex-col gap-3">
             <Field label="To address" value={dest} onChange={setDest} placeholder="keryx:…" mono />
+            <div className="flex gap-5">
+              <button onClick={scan} className="text-sm text-emerald-400">
+                Scan QR code
+              </button>
+              <button onClick={() => setShowRecipients(true)} className="text-sm text-emerald-400">
+                Recipients
+              </button>
+            </div>
             <Field label="Amount (KRX)" value={amount} onChange={setAmount} placeholder="0.0" />
             <div className="text-xs text-slate-500">
               Available: {formatKrx(app.balanceSompi)} KRX · network fee ≈ {formatKrx(MIN_FEE)} KRX
@@ -137,6 +168,28 @@ export function Send({ onDone }: { onDone: () => void }) {
         <Card className="text-center">
           <div className="text-lg font-semibold text-emerald-400">Sent ✓</div>
           <div className="mt-2 break-all font-mono text-xs text-slate-400">{txId}</div>
+          {!savedContact ? (
+            <div className="mt-4 flex flex-col gap-2 text-left">
+              <input
+                value={saveLabel}
+                onChange={(e) => setSaveLabel(e.target.value)}
+                placeholder="Label this address to save it (optional)"
+                className="w-full rounded-2xl bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none ring-emerald-500/60 focus:ring-2"
+              />
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  saveContact(app.receiveAddress, dest, saveLabel);
+                  setSavedContact(true);
+                }}
+                disabled={!saveLabel.trim()}
+              >
+                Save to address book
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-3 text-sm text-emerald-400">Saved to address book</div>
+          )}
           <div className="mt-4">
             <Button onClick={onDone}>Done</Button>
           </div>
@@ -144,6 +197,16 @@ export function Send({ onDone }: { onDone: () => void }) {
       )}
 
       {err && <div className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-300">{err}</div>}
+
+      {showRecipients && (
+        <Recipients
+          onSelect={(a) => {
+            setDest(a);
+            setShowRecipients(false);
+          }}
+          onClose={() => setShowRecipients(false)}
+        />
+      )}
     </div>
   );
 }

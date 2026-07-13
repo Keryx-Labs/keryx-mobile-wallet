@@ -16,6 +16,10 @@ echo "- Face ID usage description (Info.plist)"
 /usr/libexec/PlistBuddy -c "Delete :NSFaceIDUsageDescription" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string 'Use Face ID to unlock your Keryx wallet and confirm transactions.'" "$PLIST"
 
+echo "- Camera usage description (QR scanner)"
+/usr/libexec/PlistBuddy -c "Delete :NSCameraUsageDescription" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Scan a Keryx address QR code to fill the recipient.'" "$PLIST"
+
 echo "- App-switcher privacy blur (AppDelegate.swift)"
 cp "$ROOT/resources/ios/AppDelegate.swift" "$APP/AppDelegate.swift"
 

@@ -26,6 +26,7 @@ export default defineConfig({
       "@capacitor/core": capStub,
       "@capacitor/preferences": capStub,
       "@capacitor/local-notifications": capStub,
+      "@capacitor-mlkit/barcode-scanning": capStub,
       "@capacitor/inappbrowser": capStub,
       "@aparajita/capacitor-secure-storage": capStub,
       "@aparajita/capacitor-biometric-auth": capStub,
