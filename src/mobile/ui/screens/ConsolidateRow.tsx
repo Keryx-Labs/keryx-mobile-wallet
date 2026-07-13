@@ -65,11 +65,16 @@ export function ConsolidateRow({ onOpenModal }: { onOpenModal: () => void }) {
     setStatus("working");
     setMsg("");
     try {
-      const r = await app.consolidateWithBiometric();
+      const r = await app.consolidateWithBiometric((pr) => {
+        if (alive.current) {
+          setStatus("working");
+          setMsg(`${pr.remaining.toLocaleString()} left`);
+        }
+      });
       if (!alive.current) return;
       setStatus("done");
-      setMsg(`Sent · ${r.remaining} left`);
-      void loadCount();
+      setMsg(r.remaining <= 1 ? "Done" : `${r.remaining.toLocaleString()} left`);
+      setCount(r.remaining);
       setTimeout(() => {
         if (alive.current) {
           setStatus("idle");
@@ -99,7 +104,7 @@ export function ConsolidateRow({ onOpenModal }: { onOpenModal: () => void }) {
       return (
         <span className="inline-flex items-center gap-2 rounded-full bg-slate-700/60 px-3 py-1 text-xs text-slate-400">
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-          Preparing…
+          {msg || "Preparing…"}
         </span>
       );
     if (status === "done")

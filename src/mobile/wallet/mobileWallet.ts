@@ -4,7 +4,7 @@
 
 import * as kaspa from "../../sdk/kaspa.js";
 import type { ChainProvider, HistoryEntry, Utxo } from "../chain";
-import { signSpend, signConsolidate, consolidateInfo } from "../chain";
+import { signSpend, signConsolidate, consolidateInfo, COINBASE_MATURITY } from "../chain";
 import type { ConsolidateInfo } from "../chain";
 export type { ConsolidateInfo } from "../chain";
 import type { SecureStore } from "../secureStore";
@@ -25,12 +25,22 @@ export interface SendResult {
   feeSompi: bigint;
 }
 
-export interface ConsolidateResult {
-  txId: string;
-  feeSompi: bigint;
-  inputCount: number;
-  remaining: number; // mature UTXOs still needing consolidation after this batch (0/1 = done)
+export interface ConsolidateProgress {
+  batch: number; // 1-based index of the batch that just confirmed
+  remaining: number; // mature UTXOs still needing consolidation
+  txid: string;
 }
+
+export interface ConsolidateResult {
+  txids: string[]; // one per batch
+  batches: number;
+  remaining: number; // mature UTXOs left after the whole run (0/1 = fully consolidated)
+  totalInputs: number; // total coins swept across all batches
+  totalFeeSompi: bigint; // total network fee across all batches
+}
+
+// Backstop for the auto-loop (each batch nets ≥ −1 UTXO, so a real run terminates well before this).
+const MAX_CONSOLIDATE_BATCHES = 200;
 
 export interface AiRequestParams {
   modelId: string;
@@ -240,40 +250,96 @@ export class MobileWallet {
   }
 
   /**
-   * Consolidate ONE batch: sweep the largest (<=80) mature UTXOs into a single UTXO back to your own
-   * address. Reproduces the official desktop wallet's compound (self-send, largest-first, coinbase
-   * maturity honored, mass fee). Signs locally; requires the password. Broadcast happens here, so the
-   * caller must have already gotten explicit user authorization.
+   * Consolidate the WHOLE eligible set in ONE action — reproduces the official desktop wallet's
+   * auto-loop. A single authorization derives the keys once; then it submits batch after batch (each
+   * the largest ≤80 mature UTXOs swept into a single self-output), WAITING for each batch's inputs to
+   * be consumed by the network before reading the next set, until ≤1 UTXO remains. If a batch times
+   * out, the batches already submitted are real — it stops and reports. `onProgress` fires after each
+   * confirmed batch so the UI can show the count dropping live. Coinbase maturity is honored per batch.
    */
-  async consolidate(password: string): Promise<ConsolidateResult> {
+  async consolidate(
+    password: string,
+    onProgress?: (p: ConsolidateProgress) => void
+  ): Promise<ConsolidateResult> {
     if (!this.addresses) throw new Error("Wallet is locked.");
-    const phrase = this.revealMnemonic(password); // wrong password throws here
-    const keyMap = deriveKeyMap(phrase, this.networkId, this.scanWindow);
+    const phrase = this.revealMnemonic(password); // one auth for the whole multi-batch run
+    const keys = Array.from(deriveKeyMap(phrase, this.networkId, this.scanWindow).values());
+    const changeAddress = this.addresses.receive[0];
 
-    const [utxos, info] = await Promise.all([this.gatherUtxos(), this.chain.getInfo()]);
-    if (utxos.length === 0) throw new Error("No coins (UTXOs) to consolidate.");
+    const matureOf = (utxos: Utxo[], daa: bigint) =>
+      utxos.filter((u) => !u.isCoinbase || daa - u.blockDaaScore >= COINBASE_MATURITY);
 
-    const signed = signConsolidate({
-      utxos,
-      keys: Array.from(keyMap.values()),
-      changeAddress: this.addresses.receive[0],
-      networkId: this.networkId,
-      currentDaaScore: info.lastDaaScore,
-    });
+    const txids: string[] = [];
+    let totalFee = 0n;
+    let totalInputs = 0;
+    let remaining = 0;
 
-    const res = await this.chain.broadcast(signed.broadcastBody);
-    if (!res.ok) throw new Error(res.error ?? "Broadcast failed.");
+    let info = await this.chain.getInfo();
+    let utxos = await this.gatherUtxos();
 
-    const preview = consolidateInfo(utxos, info.lastDaaScore);
-    return {
-      txId: res.transactionId || signed.txId,
-      feeSompi: signed.feeSompi,
-      inputCount: signed.inputCount,
-      remaining: preview.remainingAfter,
-    };
+    for (let batch = 0; batch < MAX_CONSOLIDATE_BATCHES; batch++) {
+      const mature = matureOf(utxos, info.lastDaaScore);
+      if (mature.length < 2) {
+        if (batch === 0) throw new Error("Need at least 2 spendable coins (UTXOs) to consolidate.");
+        remaining = mature.length; // done — nothing left to compound
+        break;
+      }
+
+      const signed = signConsolidate({
+        utxos,
+        keys,
+        changeAddress,
+        networkId: this.networkId,
+        currentDaaScore: info.lastDaaScore,
+      });
+      const res = await this.chain.broadcast(signed.broadcastBody);
+      if (!res.ok) {
+        if (batch === 0) throw new Error(res.error ?? "Broadcast failed.");
+        break; // mid-run failure: keep the batches already done
+      }
+      const txid = res.transactionId || signed.txId;
+      txids.push(txid);
+      totalFee += signed.feeSompi;
+      totalInputs += signed.inputCount;
+
+      const spent = new Set(signed.broadcastBody.inputs.map((in_) => `${in_.transaction_id}:${in_.index}`));
+      try {
+        utxos = await this.waitForBatchConfirmed(spent);
+      } catch {
+        // Timed out waiting for this batch — the submitted batches are real; stop and report.
+        remaining = Math.max(0, mature.length - signed.inputCount + 1);
+        onProgress?.({ batch: batch + 1, remaining, txid });
+        break;
+      }
+      info = await this.chain.getInfo();
+      remaining = matureOf(utxos, info.lastDaaScore).length;
+      onProgress?.({ batch: batch + 1, remaining, txid });
+      if (remaining < 2) break;
+    }
+
+    return { txids, batches: txids.length, remaining, totalInputs, totalFeeSompi: totalFee };
   }
 
-  /** Gather spendable UTXOs from active addresses only (fast summary pass, then parallel UTXO pulls). */
+  /**
+   * Poll the gateway UTXO set until NONE of the given input outpoints remain — i.e. the batch tx was
+   * accepted into the DAG and its inputs consumed (the new compound output is then present too).
+   * Returns the fresh UTXO set. Time-boxed so a tx that never confirms surfaces as an error.
+   */
+  private async waitForBatchConfirmed(
+    spent: Set<string>,
+    timeoutMs = 120_000,
+    pollMs = 4_000
+  ): Promise<Utxo[]> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const utxos = await this.gatherUtxos();
+      if (!utxos.some((u) => spent.has(`${u.transactionId}:${u.index}`))) return utxos;
+      if (Date.now() > deadline) throw new Error("Consolidation batch did not confirm in time.");
+      await new Promise((r) => setTimeout(r, pollMs));
+    }
+  }
+
+  /** Gather spendable UTXOs from active addresses onlydresses only (fast summary pass, then parallel UTXO pulls). */
   private async gatherUtxos(): Promise<Utxo[]> {
     const summaries = await pmap(this.allAddresses, 10, (a) =>
       this.chain.getAddress(a).catch(() => null)

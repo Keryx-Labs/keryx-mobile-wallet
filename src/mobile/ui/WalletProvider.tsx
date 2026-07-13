@@ -16,7 +16,7 @@ import { addAiHistory } from "../ai/history";
 import { openExternalUrl, openExplorerTx as explorerTxUrl } from "../externalLinks";
 import { isMinerMode, setMinerMode as persistMinerMode } from "../minerMode";
 import { addRecent } from "../addressBook";
-import type { ConsolidateInfo, ConsolidateResult } from "../wallet/mobileWallet";
+import type { ConsolidateInfo, ConsolidateResult, ConsolidateProgress } from "../wallet/mobileWallet";
 import {
   biometricAvailable,
   isBiometricUnlockEnabled,
@@ -69,8 +69,8 @@ interface AppCtx extends AppState {
   fetchAiResult: (cid: string) => Promise<string>;
   setMinerMode: (on: boolean) => void;
   consolidatePreview: () => Promise<ConsolidateInfo>;
-  consolidate: (password: string) => Promise<ConsolidateResult>;
-  consolidateWithBiometric: () => Promise<ConsolidateResult>;
+  consolidate: (password: string, onProgress?: (p: ConsolidateProgress) => void) => Promise<ConsolidateResult>;
+  consolidateWithBiometric: (onProgress?: (p: ConsolidateProgress) => void) => Promise<ConsolidateResult>;
   wipe: () => Promise<void>;
 }
 
@@ -369,29 +369,32 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [wallet]);
 
   const consolidate = useCallback(
-    async (password: string) => {
+    async (password: string, onProgress?: (p: ConsolidateProgress) => void) => {
       if (!wallet) throw new Error("Wallet not ready.");
-      const r = await wallet.consolidate(password);
+      const r = await wallet.consolidate(password, onProgress);
       await refresh();
       return r;
     },
     [wallet, refresh]
   );
 
-  const consolidateWithBiometric = useCallback(async () => {
-    if (!wallet || !runtime) throw new Error("Wallet not ready.");
-    const store = secureStore(runtime.native);
-    let pw: string | null;
-    try {
-      pw = await unlockWithBiometrics(store, runtime.native);
-    } catch (e) {
-      throw new Error(friendlyBiometryError(e));
-    }
-    if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
-    const r = await wallet.consolidate(pw);
-    await refresh();
-    return r;
-  }, [wallet, runtime, refresh]);
+  const consolidateWithBiometric = useCallback(
+    async (onProgress?: (p: ConsolidateProgress) => void) => {
+      if (!wallet || !runtime) throw new Error("Wallet not ready.");
+      const store = secureStore(runtime.native);
+      let pw: string | null;
+      try {
+        pw = await unlockWithBiometrics(store, runtime.native);
+      } catch (e) {
+        throw new Error(friendlyBiometryError(e));
+      }
+      if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
+      const r = await wallet.consolidate(pw, onProgress);
+      await refresh();
+      return r;
+    },
+    [wallet, runtime, refresh]
+  );
 
   const wipe = useCallback(async () => {
     await wallet?.wipe();
