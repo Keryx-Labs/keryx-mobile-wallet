@@ -1,8 +1,9 @@
 name: Release (signed APK)
 
-# Cut a public release by pushing a version tag from the (private) source repo:
+# Cut a public release by pushing a version tag:
 #   git tag v1.0.0 && git push origin v1.0.0
-# The signed APK is built here and published to the PUBLIC releases repo below.
+# Builds a SIGNED release APK and publishes it as a GitHub Release on THIS repo
+# (the repo is public / open-source, so the release page is public too).
 
 on:
   push:
@@ -13,9 +14,8 @@ on:
         description: 'Version tag to build & publish (e.g. v1.0.0)'
         required: true
 
-env:
-  # Public, releases-only repo (source stays private). Change here if it moves.
-  RELEASES_REPO: Keryx-Labs/keryx-mobile-wallet-releases
+permissions:
+  contents: write   # needed for the built-in GITHUB_TOKEN to create the Release
 
 jobs:
   release:
@@ -87,14 +87,10 @@ jobs:
         if: always()
         run: rm -f "$GITHUB_WORKSPACE/android/app/keystore.jks"
 
-      - name: Publish release to the public releases repo
+      - name: Publish GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::RELEASES_TOKEN secret is not set — need a PAT with contents:write on $RELEASES_REPO."
-            exit 1
-          fi
           TAG="${{ steps.ver.outputs.tag }}"
           NOTES=$(mktemp)
           {
@@ -111,10 +107,9 @@ jobs:
             cat "${{ steps.art.outputs.apk }}.sha256"
             echo "\`\`\`"
             echo
-            echo "See the source repository's CHANGELOG for what's new. iOS build via TestFlight to follow."
+            echo "Full changes: see [CHANGELOG.md](../blob/main/CHANGELOG.md). iOS build via TestFlight to follow."
           } > "$NOTES"
           gh release create "$TAG" \
-            --repo "$RELEASES_REPO" \
             --title "Keryx Wallet Android ${{ steps.ver.outputs.name }}" \
             --notes-file "$NOTES" \
             "${{ steps.art.outputs.apk }}" \
