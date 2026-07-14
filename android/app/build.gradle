@@ -1,5 +1,21 @@
 apply plugin: 'com.android.application'
 
+// --- Release signing -------------------------------------------------------
+// Credentials come from either environment variables (CI: injected from GitHub
+// Actions secrets) or a local, git-ignored `keystore.properties` file. Nothing
+// secret is ever committed. If no keystore is available (e.g. a normal debug
+// build or a contributor without the release key), signing is simply skipped and
+// `assembleRelease` produces an unsigned APK — debug builds are unaffected.
+def ksPropsFile = rootProject.file("keystore.properties")
+def ksProps = new Properties()
+if (ksPropsFile.exists()) { ksProps.load(new FileInputStream(ksPropsFile)) }
+
+def ksStoreFile = System.getenv("ANDROID_KEYSTORE_FILE")     ?: ksProps.getProperty("storeFile")
+def ksStorePass = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ksProps.getProperty("storePassword")
+def ksKeyAlias  = System.getenv("ANDROID_KEY_ALIAS")         ?: ksProps.getProperty("keyAlias")
+def ksKeyPass   = System.getenv("ANDROID_KEY_PASSWORD")      ?: ksProps.getProperty("keyPassword")
+def hasSigning  = ksStoreFile != null && ksStorePass != null && ksKeyAlias != null && ksKeyPass != null
+
 android {
     namespace "app.keryx.wallet"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +23,10 @@ android {
         applicationId "app.keryx.wallet"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // Overridable by CI so each release gets a strictly increasing versionCode
+        // and a versionName taken from the git tag.
+        versionCode ((System.getenv("ANDROID_VERSION_CODE") ?: "1") as int)
+        versionName System.getenv("ANDROID_VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +34,26 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasSigning) {
+            release {
+                storeFile file(ksStoreFile)
+                storePassword ksStorePass
+                keyAlias ksKeyAlias
+                keyPassword ksKeyPass
+                // Sign with both v1 (JAR) and v2 (APK) schemes for broad compatibility.
+                v1SigningEnabled true
+                v2SigningEnabled true
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

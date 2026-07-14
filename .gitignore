@@ -33,3 +33,9 @@ shot_*.png
 keryx-wallet-demo.apk
 official_icon.png
 official_logo.png
+
+# Release signing — never commit keystore material
+keystore.properties
+*.jks
+*.keystore
+android/app/keystore.jks
