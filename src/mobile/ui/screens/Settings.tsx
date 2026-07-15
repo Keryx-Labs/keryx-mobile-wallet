@@ -3,6 +3,7 @@ import { useApp } from "../WalletProvider";
 import { Button, Card, Field, copy, shortAddr, Toast } from "../kit";
 import { RESOURCE_LINKS } from "../../externalLinks";
 import { ResIcon } from "../ResourceIcons";
+import { VersionCard } from "./UpdateBanner";
 
 export function Settings() {
   const app = useApp();
@@ -137,6 +138,7 @@ export function Settings() {
             {shortAddr(app.donateAddress, 12)} — tap to copy
           </button>
         )}
+        <VersionCard />
       </Card>
 
       <Card>

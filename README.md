@@ -17,6 +17,7 @@ the **desktop wallet‑core (WASM SDK) unchanged**. Your keys, seed and password
 - **Live KRX price** and a **Trade** shortcut to the NonKYC KRX/USDT market.
 - **AI Inference tab** — pick a model, pay in KRX, and get a verifiable on-chain answer: the app builds & signs an `AiRequest` (subnetwork `0300`) locally, broadcasts it, discovers the miner's answer via `/api/v1/infer`, fetches the result from the Keryx IPFS gateway, and fires a local notification when it's ready.
 - **Consolidate (compound)** — for miners: **one tap consolidates your whole eligible set**, reproducing the official desktop wallet's auto-loop. A single authorization then sweeps batch after batch (largest ≤80 mature UTXOs → one self-output each), waiting for each to confirm before the next, until a single coin remains. Honors the 1000-DAA coinbase maturity; local signing. Gated behind an opt-in **"I own a miner"** setting, shown as a subtle wallet-screen row with a live UTXO count.
+- **In-app update check** — since the app is distributed as a signed APK on GitHub (not a store), it checks the public Releases API on launch and shows a banner when a newer version is available, linking to the download. It never installs anything itself.
 - **Wallet data caching** — last balance/history shown instantly on launch, then a background sync (stale-while-revalidate).
 - **Official Keryx branding** — the neon-K adaptive app icon (Android + iOS) and notification icon.
 - **Community & resources** links (GitHub, X, Discord, Docs, BitcoinTalk) in Settings.

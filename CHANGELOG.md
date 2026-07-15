@@ -2,6 +2,16 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.0.2] — 2026-07-15
+
+### Added
+- **In-app update check.** The sideloaded Android build now checks the public GitHub Releases API on
+  launch and shows a dismissible "Update available" banner (per-version dismissal) when a newer
+  release is published, plus a "Check for updates" action and the installed version in Settings.
+  It reads only the public releases list and never downloads or installs anything — "Update" opens the
+  release page in the system browser, where the user installs the new APK manually. URLs are built
+  locally from the tag rather than trusted from the API body. Native-only; no-op on web.
+
 ## [1.0.1] — 2026-07-15
 
 ### Fixed

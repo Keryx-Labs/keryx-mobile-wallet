@@ -3,6 +3,7 @@ import { useApp } from "../WalletProvider";
 import { Button, Card, copy, formatKrx, krxNumber, shortAddr, Toast, PullToRefresh } from "../kit";
 import { Consolidate } from "./Consolidate";
 import { ConsolidateRow } from "./ConsolidateRow";
+import { UpdateBanner } from "./UpdateBanner";
 
 export function Home({ go }: { go: (id: "send" | "receive") => void }) {
   const app = useApp();
@@ -17,6 +18,7 @@ export function Home({ go }: { go: (id: "send" | "receive") => void }) {
   return (
     <PullToRefresh onRefresh={() => app.refresh(true)} refreshing={app.refreshing}>
       <div className="mx-auto flex max-w-md flex-col gap-4 p-5 pb-28">
+        <UpdateBanner />
         <Card className="text-center">
           <div className="text-sm text-slate-400">Balance</div>
           <div className="mt-1 text-4xl font-bold text-slate-50">
