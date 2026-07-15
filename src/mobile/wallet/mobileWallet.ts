@@ -332,23 +332,48 @@ export class MobileWallet {
   ): Promise<Utxo[]> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const utxos = await this.gatherUtxos();
-      if (!utxos.some((u) => spent.has(`${u.transactionId}:${u.index}`))) return utxos;
+      const { utxos, complete } = await this.gatherUtxosDetailed();
+      // Only trust a COMPLETE read. A partial/failed fetch right after broadcast would show the spent
+      // outpoints "gone" merely because some addresses failed to load — which previously made the
+      // auto-loop stop after a single batch. Require a full read before declaring the batch done.
+      if (complete && !utxos.some((u) => spent.has(`${u.transactionId}:${u.index}`))) return utxos;
       if (Date.now() > deadline) throw new Error("Consolidation batch did not confirm in time.");
       await new Promise((r) => setTimeout(r, pollMs));
     }
   }
 
-  /** Gather spendable UTXOs from active addresses onlydresses only (fast summary pass, then parallel UTXO pulls). */
-  private async gatherUtxos(): Promise<Utxo[]> {
-    const summaries = await pmap(this.allAddresses, 10, (a) =>
-      this.chain.getAddress(a).catch(() => null)
-    );
+  /**
+   * Gather spendable UTXOs from active addresses (fast summary pass, then parallel UTXO pulls).
+   * `complete` is false if ANY address query failed — callers that must not mistake a partial or
+   * failed read for an empty wallet (e.g. the consolidate confirmation wait) check this flag.
+   */
+  private async gatherUtxosDetailed(): Promise<{ utxos: Utxo[]; complete: boolean }> {
+    let complete = true;
+    const summaries = await pmap(this.allAddresses, 10, async (a) => {
+      try {
+        return await this.chain.getAddress(a);
+      } catch {
+        complete = false;
+        return null;
+      }
+    });
     const active = this.allAddresses.filter(
       (_, i) => summaries[i] && (summaries[i]!.totalTxCount > 0 || summaries[i]!.totalReceivedSompi > 0n)
     );
-    const lists = await pmap(active, 8, (a) => this.chain.getUtxos(a).catch(() => []));
-    return lists.flat();
+    const lists = await pmap(active, 8, async (a) => {
+      try {
+        return await this.chain.getUtxos(a);
+      } catch {
+        complete = false;
+        return [] as Utxo[];
+      }
+    });
+    return { utxos: lists.flat(), complete };
+  }
+
+  /** Best-effort UTXO gather (partial reads tolerated) — used for balance / send / AI. */
+  private async gatherUtxos(): Promise<Utxo[]> {
+    return (await this.gatherUtxosDetailed()).utxos;
   }
 
   /**

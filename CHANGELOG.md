@@ -2,6 +2,17 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.0.1] — 2026-07-15
+
+### Fixed
+- **Consolidate now reliably compounds the *whole* eligible UTXO set.** The multi-batch auto-loop
+  could stop after the first 80-input batch when a gateway read hiccupped right after a broadcast: a
+  partial/failed UTXO fetch was mistaken for "all inputs consumed", ending the loop early (so only ~80
+  coins got compounded). The batch-confirmation wait now trusts only a COMPLETE read of the UTXO set
+  before advancing, and never treats a failed fetch as an empty wallet — so a large miner wallet is
+  swept batch after batch until a single coin remains, as intended. Added a regression test that
+  injects a transient read failure mid-run (87 tests pass).
+
 ## [0.1.0] — 2026-07-13 (first working Android build)
 
 Mobile (Android/iOS) build of the Keryx Wallet, on **Capacitor + React**, reusing the desktop

@@ -126,6 +126,46 @@ describe("multi-batch consolidate (>80 UTXOs in one action)", () => {
     for (let i = 1; i < progress.length; i++) expect(progress[i]).toBeLessThan(progress[i - 1]);
   }, 20000);
 
+  it("keeps looping when a gateway read transiently fails after a batch (regression)", async () => {
+    // Simulates the real-world bug: right after broadcasting batch 1, a UTXO read fails. A partial/
+    // failed read must NOT be mistaken for "all inputs consumed" (which used to stop the loop at 80).
+    class FlakyChain extends StatefulChain {
+      private broadcasts = 0;
+      private pendingFail = false;
+      async broadcast(tx: BroadcastTx): Promise<BroadcastResult> {
+        const r = await super.broadcast(tx);
+        this.broadcasts++;
+        if (this.broadcasts === 1) this.pendingFail = true; // transient hiccup right after batch 1
+        return r;
+      }
+      async getUtxos(a: string): Promise<Utxo[]> {
+        if (this.pendingFail) {
+          this.pendingFail = false;
+          throw new Error("transient gateway hiccup");
+        }
+        return super.getUtxos(a);
+      }
+    }
+
+    const store = memStore();
+    const ph = new MobileWallet(new StatefulChain("x") as any, store, { scanWindow: 2 }).newMnemonic();
+    const probe = new MobileWallet(new StatefulChain("x") as any, store, { scanWindow: 2 });
+    await probe.createOrImport("pw", ph);
+    const funded = probe.receiveAddress!;
+
+    const chain = new FlakyChain(funded);
+    chain.utxos = Array.from({ length: 200 }, (_, i) => mkUtxo(funded, i));
+    const w = new MobileWallet(chain as any, store, { scanWindow: 2 });
+    w.unlock("pw");
+
+    const r = await w.consolidate("pw");
+    // Despite the transient failure it still auto-looped past 80 and finished the whole set.
+    expect(r.batches).toBeGreaterThan(1);
+    expect(r.totalInputs).toBeGreaterThan(80);
+    expect(r.remaining).toBeLessThanOrEqual(1);
+    expect(chain.utxos.length).toBeLessThanOrEqual(1);
+  }, 30000);
+
   it("refuses when fewer than 2 coins", async () => {
     const store = memStore();
     const ph = new MobileWallet(new StatefulChain("x") as any, store, { scanWindow: 2 }).newMnemonic();
