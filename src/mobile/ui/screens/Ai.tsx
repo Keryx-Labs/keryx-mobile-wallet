@@ -25,7 +25,7 @@ function timeAgo(ts: number): string {
 
 export function Ai() {
   const app = useApp();
-  const [modelId, setModelId] = useState(AI_MODELS[2].id); // Dolphin-3.0-8B (default tier)
+  const [modelId, setModelId] = useState(AI_MODELS[2].id); // GLM-4-9B-0414 (default tier)
   const [prompt, setPrompt] = useState("");
   const [maxTokens, setMaxTokens] = useState("256");
   const [rewardKrx, setRewardKrx] = useState(formatKrx(AI_MODELS[2].minRewardSompi));

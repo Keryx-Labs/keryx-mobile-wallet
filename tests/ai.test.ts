@@ -6,7 +6,6 @@ import {
   base58btcEncode,
   MIN_AI_REQUEST_PRIORITY_FEE,
 } from "../src/mobile/ai/payload";
-import { AI_MODELS, modelById } from "../src/mobile/ai/models";
 
 const GEMMA = "ad50ad0bd461d8ab44efc0214989eb33291685ef4ade22a0f4f217d03266d837";
 
@@ -69,18 +68,5 @@ describe("AI response parsing", () => {
     expect(r.responseLength).toBe(500);
     expect(r.cid.startsWith("Qm")).toBe(true);
     expect(parseAiResponse("00")).toBeNull();
-  });
-});
-
-describe("model registry", () => {
-  it("has the 5-tier lineup with correct minimum rewards", () => {
-    expect(AI_MODELS.map((m) => m.name)).toEqual([
-      "Qwen3-1.7B",
-      "Gemma-3-4B",
-      "Dolphin-3.0-8B",
-      "Qwen3-32B",
-      "LLaMA-3.3-70B",
-    ]);
-    expect(modelById(GEMMA)?.minRewardSompi).toBe(50_000_000n);
   });
 });

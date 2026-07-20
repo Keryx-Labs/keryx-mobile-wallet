@@ -1,9 +1,12 @@
-// Keryx AI model registry — the current on-chain lineup (H2, 5 tiers).
+// Keryx AI model registry — the current on-chain lineup.
 //
-// model_id = sha2-256(model weights) = base58-decode(weight CID)[2..34]. Values + minimum
-// inference_reward are mirrored VERBATIM from keryx-node `consensus/core/src/config/params.rs`
-// (`INFERENCE_REWARD_MINIMUMS_V2_H2`). A request below a model's minimum reward is rejected by
-// consensus, so the UI must charge at least this much.
+// model_id = sha2-256(model weight file) = base58-decode(weight CID)[2..34]. The ids and minimum
+// inference_reward values below are mirrored VERBATIM from keryx-node
+// `consensus/core/src/config/params.rs` → `INFERENCE_REWARD_MINIMUMS_V2_H4`, the table enforced by
+// consensus since the **H4 hard fork** (`H4_ACTIVATION_DAA = 54_766_000`, which mainnet has passed).
+// A request for a model not in this table — or below its minimum reward — is rejected by the node, so
+// the UI must only offer these models and charge at least the minimum. Re-sync this file whenever the
+// node activates a new lineup (see keryx-miner `src/models.rs`, which the node mirrors in lockstep).
 
 export interface AiModel {
   id: string; // 32-byte model_id, hex
@@ -13,11 +16,11 @@ export interface AiModel {
 }
 
 export const AI_MODELS: AiModel[] = [
-  { id: "4f21ddeb7d62bd2265bc54230d536ca3f1749927780f528c3c41fa2911df4d72", name: "Qwen3-1.7B", tier: "very-light", minRewardSompi: 30_000_000n },
-  { id: "ad50ad0bd461d8ab44efc0214989eb33291685ef4ade22a0f4f217d03266d837", name: "Gemma-3-4B", tier: "light", minRewardSompi: 50_000_000n },
-  { id: "9421066a6400c98ba137114f7f4b7d4a2ddf13ab163a5de38c0184793af6313a", name: "Dolphin-3.0-8B", tier: "default", minRewardSompi: 150_000_000n },
-  { id: "65c6eb6fe18b9efd8060ab9d2d03bb9b01050a3b1378cbac000c5cc0acdc0d2a", name: "Qwen3-32B", tier: "high", minRewardSompi: 250_000_000n },
-  { id: "6df46a78cbe4dc579f04dbd801f1a520b9eae28ce7b50c8da7874bfa3fb5108d", name: "LLaMA-3.3-70B", tier: "very-high", minRewardSompi: 400_000_000n },
+  { id: "300a99b3a85b0ab45d1d930bb7b1d4b0f35983d521e79ff21193a6908dc4b810", name: "EXAONE-4.0-1.2B", tier: "very-light", minRewardSompi: 50_000_000n },
+  { id: "8c2fea600f0eefe7048741a5119cb7be303037f59fc026e48382658f23581e0a", name: "Mistral-7B-v0.3", tier: "light", minRewardSompi: 100_000_000n },
+  { id: "fa2f13be0850e26c5ce86c7ac79da85e300c1da8b3290f9a18d47105f1f2140a", name: "GLM-4-9B-0414", tier: "default", minRewardSompi: 150_000_000n },
+  { id: "b8bdc01fa407eab943e4fefc807483b39f8142785256049e1f559698a5284746", name: "Qwen3.6-27B", tier: "high", minRewardSompi: 250_000_000n },
+  { id: "3dc09358ad75c6ef0c9c86ee4f47c4d6acda961fecbd0e4f9cf55e8f0fdffddb", name: "Kimi-Linear-48B", tier: "very-high", minRewardSompi: 400_000_000n },
 ];
 
 export function modelById(id: string): AiModel | undefined {

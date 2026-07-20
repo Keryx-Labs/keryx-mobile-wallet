@@ -222,13 +222,20 @@ export class MobileWallet {
     const phrase = this.revealMnemonic(password); // wrong password throws here
     const keyMap = deriveKeyMap(phrase, this.networkId, this.scanWindow);
 
-    const utxos = await this.gatherUtxos();
-    if (utxos.length === 0) throw new Error("No spendable UTXOs found.");
+    const [utxos, info] = await Promise.all([this.gatherUtxos(), this.chain.getInfo()]);
+    const spendable = this.matureUtxos(utxos, info.lastDaaScore);
+    if (spendable.length === 0) {
+      throw new Error(
+        utxos.length > 0
+          ? "Your coins are still maturing — freshly mined rewards are spendable after ~1000 blocks. Try again shortly."
+          : "No spendable UTXOs found."
+      );
+    }
 
     const keys = Array.from(keyMap.values());
     const changeAddress = this.addresses.receive[0];
     const signed = signSpend({
-      utxos,
+      utxos: spendable,
       keys,
       destinationAddress: destAddress,
       amountSompi,
@@ -377,6 +384,17 @@ export class MobileWallet {
   }
 
   /**
+   * Drop immature coinbase (mining-reward) UTXOs from a set: a freshly-mined reward can't be spent
+   * until COINBASE_MATURITY DAA have passed, and the node rejects a tx that includes one. Mirrors the
+   * desktop wallet's coin selection (and the consolidate path). Non-coinbase UTXOs are always kept.
+   */
+  private matureUtxos(utxos: Utxo[], currentDaaScore: bigint): Utxo[] {
+    return utxos.filter(
+      (u) => !u.isCoinbase || currentDaaScore - u.blockDaaScore >= COINBASE_MATURITY
+    );
+  }
+
+  /**
    * Build, sign and broadcast a Keryx AI inference request (a special-subnetwork tx whose fee is the
    * miner's payment). Requires the password (verified by revealing the mnemonic). Returns the request
    * tx id + request_hash used later to find the answer. Never logs the prompt or any secret.
@@ -389,11 +407,18 @@ export class MobileWallet {
     const phrase = this.revealMnemonic(password); // wrong password throws here
     const keyMap = deriveKeyMap(phrase, this.networkId, this.scanWindow);
 
-    const utxos = await this.gatherUtxos();
-    if (utxos.length === 0) throw new Error("No spendable KRX found to pay for the request.");
+    const [utxos, info] = await Promise.all([this.gatherUtxos(), this.chain.getInfo()]);
+    const spendable = this.matureUtxos(utxos, info.lastDaaScore);
+    if (spendable.length === 0) {
+      throw new Error(
+        utxos.length > 0
+          ? "Your coins are still maturing — freshly mined rewards are spendable after ~1000 blocks. Try again shortly."
+          : "No spendable KRX found to pay for the request."
+      );
+    }
 
     const signed = signAiRequest({
-      utxos,
+      utxos: spendable,
       keys: Array.from(keyMap.values()),
       changeAddress: this.addresses.receive[0],
       networkId: this.networkId,

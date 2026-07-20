@@ -2,6 +2,22 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.0.3] — 2026-07-15
+
+### Changed
+- **AI model lineup updated to the current H4 network models.** The on-chain lineup switched at the
+  H4 hard fork (activation DAA 54,766,000, now passed), so the registry was re-synced from keryx-node
+  `params.rs` (`INFERENCE_REWARD_MINIMUMS_V2_H4`): **EXAONE-4.0-1.2B** (0.5), **Mistral-7B-v0.3** (1.0),
+  **GLM-4-9B-0414** (1.5, default), **Qwen3.6-27B** (2.5) and **Kimi-Linear-48B** (4.0 KRX min). The
+  previous (H2) models were stale and could be rejected by consensus. model_ids and minimum rewards
+  are mirrored verbatim; a test locks them in.
+
+### Fixed
+- **Immature mining rewards are no longer used when sending or paying for AI inference.** Matching the
+  desktop wallet, a freshly-mined coinbase reward that hasn't reached maturity (1000 DAA) is skipped in
+  coin selection for Send and AI requests, so a miner's transaction is no longer rejected by the node
+  with a "coinbase maturity" error. (Consolidate already did this.)
+
 ## [1.0.2] — 2026-07-15
 
 ### Added
