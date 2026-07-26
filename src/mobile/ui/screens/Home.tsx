@@ -3,6 +3,7 @@ import { useApp } from "../WalletProvider";
 import { Button, Card, copy, formatKrx, krxNumber, shortAddr, Toast, PullToRefresh } from "../kit";
 import { Consolidate } from "./Consolidate";
 import { ConsolidateRow } from "./ConsolidateRow";
+import { MiningCard } from "./MiningCard";
 import { UpdateBanner } from "./UpdateBanner";
 
 export function Home({ go }: { go: (id: "send" | "receive") => void }) {
@@ -70,6 +71,7 @@ export function Home({ go }: { go: (id: "send" | "receive") => void }) {
           Trade KRX ↗
         </Button>
 
+        {app.minerMode && <MiningCard />}
         {app.minerMode && <ConsolidateRow onOpenModal={() => setShowConsolidate(true)} />}
 
         <div className="flex items-center justify-between px-1">

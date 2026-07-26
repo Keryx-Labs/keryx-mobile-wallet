@@ -2,6 +2,18 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.0.4] — 2026-07-20
+
+### Added
+- **Mining insight for miner mode.** A new wallet-screen card (shown only when "I own a miner" is on)
+  summarizes recent mining: KRX mined in the last 24h, number of reward coins, and how many are still
+  maturing. It also shows the **holder-reward keep rate** — whether you're keeping the full reward or
+  burning part of it because your balance is low relative to what you mine — computed with keryx-node's
+  exact ratio-reward brackets (`RATIO_REWARD_BPS_V2`, active since the H4 / coin_age activation), and
+  tells you how much more KRX to hold to reach the next bracket. Tap to expand the breakdown.
+  Production is estimated from recent coinbase UTXOs and the tier (GPU) factor is excluded, so the
+  rate is labelled an estimate. New `src/mobile/mining.ts` + tests locking the bracket math.
+
 ## [1.0.3] — 2026-07-15
 
 ### Changed

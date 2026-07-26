@@ -16,7 +16,7 @@ import { addAiHistory } from "../ai/history";
 import { openExternalUrl, openExplorerTx as explorerTxUrl } from "../externalLinks";
 import { isMinerMode, setMinerMode as persistMinerMode } from "../minerMode";
 import { addRecent } from "../addressBook";
-import type { ConsolidateInfo, ConsolidateResult, ConsolidateProgress } from "../wallet/mobileWallet";
+import type { ConsolidateInfo, ConsolidateResult, ConsolidateProgress, MiningStats } from "../wallet/mobileWallet";
 import {
   biometricAvailable,
   isBiometricUnlockEnabled,
@@ -69,6 +69,7 @@ interface AppCtx extends AppState {
   fetchAiResult: (cid: string) => Promise<string>;
   setMinerMode: (on: boolean) => void;
   consolidatePreview: () => Promise<ConsolidateInfo>;
+  miningStats: () => Promise<MiningStats>;
   consolidate: (password: string, onProgress?: (p: ConsolidateProgress) => void) => Promise<ConsolidateResult>;
   consolidateWithBiometric: (onProgress?: (p: ConsolidateProgress) => void) => Promise<ConsolidateResult>;
   wipe: () => Promise<void>;
@@ -368,6 +369,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return wallet.consolidatePreview();
   }, [wallet]);
 
+  const miningStats = useCallback(async () => {
+    if (!wallet) throw new Error("Wallet not ready.");
+    return wallet.miningStats();
+  }, [wallet]);
+
   const consolidate = useCallback(
     async (password: string, onProgress?: (p: ConsolidateProgress) => void) => {
       if (!wallet) throw new Error("Wallet not ready.");
@@ -437,6 +443,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     fetchAiResult,
     setMinerMode,
     consolidatePreview,
+    miningStats,
     consolidate,
     consolidateWithBiometric,
     wipe,

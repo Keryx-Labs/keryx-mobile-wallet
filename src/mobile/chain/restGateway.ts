@@ -89,6 +89,8 @@ export class RestGatewayProvider implements ChainProvider {
     return {
       network: String(j.network ?? ""),
       lastDaaScore: toBig(j.last_daa_score),
+      blockRewardSompi:
+        j.block_reward_krx != null ? BigInt(Math.round(Number(j.block_reward_krx) * 1e8)) : undefined,
       syncedHint: true,
     };
   }

@@ -15,6 +15,8 @@ import type { BroadcastTx } from "./broadcast";
 export interface NetworkInfo {
   network: string; // e.g. "keryx-mainnet"
   lastDaaScore: bigint;
+  /** Current per-block subsidy in sompi (from /info block_reward_krx). Used to floor mining production. */
+  blockRewardSompi?: bigint;
   syncedHint?: boolean;
 }
 

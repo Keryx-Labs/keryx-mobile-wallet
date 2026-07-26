@@ -10,6 +10,12 @@ export type { ConsolidateInfo } from "../chain";
 import type { SecureStore } from "../secureStore";
 import { deriveAddresses, deriveKeyMap, firstReceiveAddress } from "./derivation";
 import { signAiRequest } from "../ai/tx";
+import {
+  miningSummary,
+  holderKeepBps,
+  nextHolderBracket,
+  type MiningSummary,
+} from "../mining";
 
 // Same key the desktop wallet + seedVault use, so the encrypted blob is shared/mirrorable.
 const SEED_KEY = "keryx.wallet.seed.v1";
@@ -37,6 +43,14 @@ export interface ConsolidateResult {
   remaining: number; // mature UTXOs left after the whole run (0/1 = fully consolidated)
   totalInputs: number; // total coins swept across all batches
   totalFeeSompi: bigint; // total network fee across all batches
+}
+
+export interface MiningStats extends MiningSummary {
+  balanceSompi: bigint;
+  /** Holder-reward keep rate (basis points) at the current balance vs windowed production. */
+  holderKeepBps: number;
+  /** Next bracket up + the total balance needed to reach it, or null if already at 100%. */
+  next: { keepBps: number; needBalanceSompi: bigint } | null;
 }
 
 // Backstop for the auto-loop (each batch nets ≥ −1 UTXO, so a real run terminates well before this).
@@ -247,6 +261,26 @@ export class MobileWallet {
     const res = await this.chain.broadcast(signed.broadcastBody);
     if (!res.ok) throw new Error(res.error ?? "Broadcast failed.");
     return { txId: res.transactionId || signed.txId, feeSompi: signed.feeSompi };
+  }
+
+  /**
+   * Read-only mining insight (no keys, no broadcast): how much this wallet has mined recently, how
+   * many rewards are still maturing, and the exact HOLDER-REWARD keep rate for the current balance vs
+   * windowed production (see `mining.ts`). Lets a miner see if they're burning part of the reward by
+   * not holding enough KRX, and how much more to hold to reach the next bracket.
+   */
+  async miningStats(): Promise<MiningStats> {
+    if (!this.addresses) throw new Error("Wallet is locked.");
+    const [utxos, info] = await Promise.all([this.gatherUtxos(), this.chain.getInfo()]);
+    const balanceSompi = utxos.reduce((s, u) => s + u.amountSompi, 0n);
+    const oneSubsidy = info.blockRewardSompi ?? 0n;
+    const summary = miningSummary(utxos, info.lastDaaScore, oneSubsidy);
+    return {
+      ...summary,
+      balanceSompi,
+      holderKeepBps: holderKeepBps(balanceSompi, summary.windowProductionSompi),
+      next: nextHolderBracket(balanceSompi, summary.windowProductionSompi),
+    };
   }
 
   /** Read-only consolidate sizing for the confirm screen (no keys, no broadcast). */
