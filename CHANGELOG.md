@@ -2,6 +2,18 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.0.5] — 2026-07-26
+
+### Fixed
+- **AI requests no longer rejected with "inference_reward below minimum".** The consensus minimum
+  reward scales with `max_tokens` (the node adds a surcharge of 0.05 KRX per 64-token step on top of
+  the model base — keryx-node `inference/src/ai_payload.rs`), but the app validated only against the
+  flat model base. With the default 256 tokens this made even the default reward too low for some
+  models (e.g. GLM-4-9B needs 1.7 KRX, not 1.5). The AI screen now computes the effective minimum as
+  `base + ceil(max_tokens / 64) × 0.05 KRX`, uses it for the shown minimum, validation, and the
+  auto-filled reward (bumped up when the model or length changes). New `effectiveMinRewardSompi()`
+  helper + tests (incl. the exact 256-token/GLM case).
+
 ## [1.0.4] — 2026-07-20
 
 ### Added

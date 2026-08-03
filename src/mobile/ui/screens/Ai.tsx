@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../WalletProvider";
 import { Button, Card, Toast, copy } from "../kit";
-import { AI_MODELS, modelById } from "../../ai/models";
+import { AI_MODELS, modelById, effectiveMinRewardSompi } from "../../ai/models";
 import { MIN_AI_REQUEST_PRIORITY_FEE } from "../../ai/payload";
 import { formatKrx, krxToSompi, krxNumber } from "../format";
 import { ensureNotifPermission, notifyAiAnswer } from "../../notifications";
@@ -48,6 +48,12 @@ export function Ai() {
   }, [reloadHistory]);
 
   const model = modelById(modelId) ?? AI_MODELS[0];
+  // Consensus minimum scales with max_tokens (surcharge per 64-token step) — not just the model base.
+  const parsedMaxTokens = parseInt(maxTokens, 10);
+  const effMinReward = effectiveMinRewardSompi(
+    model.minRewardSompi,
+    Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0 ? parsedMaxTokens : 0
+  );
   const [showWarn, setShowWarn] = useState<boolean>(() => {
     try {
       return localStorage.getItem("keryx.ai.warn.hidden.v1") !== "1";
@@ -68,24 +74,23 @@ export function Ai() {
     setTimeout(() => setToast(null), 1400);
   };
 
-  // Keep the reward at or above the selected model's minimum when switching models.
-  const onPickModel = (id: string) => {
-    setModelId(id);
-    const m = modelById(id);
-    if (m) {
-      try {
-        if (krxToSompi(rewardKrx) < m.minRewardSompi) setRewardKrx(formatKrx(m.minRewardSompi));
-      } catch {
-        setRewardKrx(formatKrx(m.minRewardSompi));
-      }
+  const onPickModel = (id: string) => setModelId(id);
+
+  // Keep the reward at or above the token-scaled minimum whenever the model or length changes.
+  useEffect(() => {
+    try {
+      if (krxToSompi(rewardKrx) < effMinReward) setRewardKrx(formatKrx(effMinReward));
+    } catch {
+      setRewardKrx(formatKrx(effMinReward));
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, maxTokens]);
 
   let rewardSompi = 0n;
   let rewardValid = false;
   try {
     rewardSompi = krxToSompi(rewardKrx);
-    rewardValid = rewardSompi >= model.minRewardSompi;
+    rewardValid = rewardSompi >= effMinReward;
   } catch {
     rewardValid = false;
   }
@@ -98,7 +103,9 @@ export function Ai() {
     const mt = parseInt(maxTokens, 10);
     if (!Number.isFinite(mt) || mt <= 0) return setErr("Max tokens must be a positive number.");
     if (!rewardValid)
-      return setErr(`Minimum reward for ${model.name} is ${formatKrx(model.minRewardSompi)} KRX.`);
+      return setErr(
+        `Minimum reward for ${model.name} at ${mt} tokens is ${formatKrx(effMinReward)} KRX.`
+      );
     setBusy(true);
     try {
       const params = { modelId, prompt, maxTokens: mt, rewardSompi };
@@ -268,7 +275,7 @@ export function Ai() {
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-sm text-slate-400">
-                    Inference reward (KRX) · min {formatKrx(model.minRewardSompi)}
+                    Inference reward (KRX) · min {formatKrx(effMinReward)}
                   </span>
                   <input
                     value={rewardKrx}

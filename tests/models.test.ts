@@ -5,7 +5,7 @@
 // model_id or below-minimum reward would get the AiRequest rejected by consensus.
 
 import { describe, it, expect } from "vitest";
-import { AI_MODELS, modelById } from "../src/mobile/ai/models";
+import { AI_MODELS, modelById, effectiveMinRewardSompi } from "../src/mobile/ai/models";
 
 describe("AI model registry (H4 lineup)", () => {
   it("has the five current tiers with valid 32-byte ids and consensus minimums", () => {
@@ -38,6 +38,19 @@ describe("AI model registry (H4 lineup)", () => {
     for (let i = 1; i < AI_MODELS.length; i++) {
       expect(AI_MODELS[i].minRewardSompi > AI_MODELS[i - 1].minRewardSompi).toBe(true);
     }
+  });
+
+  it("effectiveMinRewardSompi adds the node's per-64-token surcharge (ceil)", () => {
+    const glm = AI_MODELS.find((m) => m.name === "GLM-4-9B-0414")!;
+    expect(glm.minRewardSompi).toBe(150_000_000n);
+    // The reported rejection: GLM at 256 max_tokens requires 170_000_000 (150M + 4 × 5M).
+    expect(effectiveMinRewardSompi(glm.minRewardSompi, 256)).toBe(170_000_000n);
+    // ceil semantics + edges
+    expect(effectiveMinRewardSompi(150_000_000n, 0)).toBe(150_000_000n); // no length → base
+    expect(effectiveMinRewardSompi(150_000_000n, 1)).toBe(155_000_000n); // ceil(1/64)=1 step
+    expect(effectiveMinRewardSompi(150_000_000n, 64)).toBe(155_000_000n); // exactly 1 step
+    expect(effectiveMinRewardSompi(150_000_000n, 65)).toBe(160_000_000n); // rolls to 2 steps
+    expect(effectiveMinRewardSompi(150_000_000n, 128)).toBe(160_000_000n); // 2 steps
   });
 
   it("modelById resolves case-insensitively and returns undefined for unknown ids", () => {

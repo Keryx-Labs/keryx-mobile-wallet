@@ -26,3 +26,15 @@ export const AI_MODELS: AiModel[] = [
 export function modelById(id: string): AiModel | undefined {
   return AI_MODELS.find((m) => m.id.toLowerCase() === id.toLowerCase());
 }
+
+// The consensus minimum inference_reward is NOT flat per model — it scales with max_tokens. The node
+// adds a surcharge of INFERENCE_REWARD_TOKEN_STEP per 64-token increment (keryx-node
+// `inference/src/ai_payload.rs`): effective_min = base + ceil(max_tokens / 64) * step. A request below
+// this is rejected ("inference_reward … below minimum … for model"), so the UI must charge at least
+// the effective minimum for the chosen length, not just the model base.
+export const INFERENCE_REWARD_TOKEN_STEP = 5_000_000n; // 0.05 KRX per 64-token step
+
+export function effectiveMinRewardSompi(baseMinSompi: bigint, maxTokens: number): bigint {
+  const steps = Number.isFinite(maxTokens) && maxTokens > 0 ? Math.ceil(maxTokens / 64) : 0;
+  return baseMinSompi + BigInt(steps) * INFERENCE_REWARD_TOKEN_STEP;
+}
