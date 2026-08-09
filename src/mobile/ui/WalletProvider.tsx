@@ -65,6 +65,9 @@ interface AppCtx extends AppState {
   donateAddress: string;
   submitAi: (password: string, params: AiRequestParams) => Promise<AiRequestResult>;
   submitAiWithBiometric: (params: AiRequestParams) => Promise<AiRequestResult>;
+  escrowSummary: () => Promise<{ totalSompi: bigint; maturedSompi: bigint; count: number; maturedCount: number }>;
+  reclaimEscrows: (password: string) => Promise<{ reclaimedSompi: bigint; txId: string | null; count: number; remaining: number }>;
+  reclaimEscrowsWithBiometric: () => Promise<{ reclaimedSompi: bigint; txId: string | null; count: number; remaining: number }>;
   findAiResponse: (requestHash: string) => Promise<AiResponseFound | null>;
   fetchAiResult: (cid: string) => Promise<string>;
   setMinerMode: (on: boolean) => void;
@@ -374,6 +377,36 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return wallet.miningStats();
   }, [wallet]);
 
+  const escrowSummary = useCallback(async () => {
+    if (!wallet) throw new Error("Wallet not ready.");
+    return wallet.escrowSummary();
+  }, [wallet]);
+
+  const reclaimEscrows = useCallback(
+    async (password: string) => {
+      if (!wallet) throw new Error("Wallet not ready.");
+      const r = await wallet.reclaimEscrows(password);
+      await refresh();
+      return r;
+    },
+    [wallet, refresh]
+  );
+
+  const reclaimEscrowsWithBiometric = useCallback(async () => {
+    if (!wallet || !runtime) throw new Error("Wallet not ready.");
+    const store = secureStore(runtime.native);
+    let pw: string | null;
+    try {
+      pw = await unlockWithBiometrics(store, runtime.native);
+    } catch (e) {
+      throw new Error(friendlyBiometryError(e));
+    }
+    if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
+    const r = await wallet.reclaimEscrows(pw);
+    await refresh();
+    return r;
+  }, [wallet, runtime, refresh]);
+
   const consolidate = useCallback(
     async (password: string, onProgress?: (p: ConsolidateProgress) => void) => {
       if (!wallet) throw new Error("Wallet not ready.");
@@ -439,6 +472,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     donateAddress: runtime?.donateAddress ?? "",
     submitAi,
     submitAiWithBiometric,
+    escrowSummary,
+    reclaimEscrows,
+    reclaimEscrowsWithBiometric,
     findAiResponse,
     fetchAiResult,
     setMinerMode,

@@ -2,21 +2,33 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
-## [1.0.6] — 2026-08-03 (unreleased)
+## [1.0.6] — 2026-08-03
 
 ### Fixed
-- **AiRequest rejected: "missing escrow output[1] (required for UTXO escrow design)".** Keryx moved
-  AI requests from the old fee-based model to a **UTXO-escrow** design: the consensus validator
-  (keryx-node `utxo_validation.rs::check_ai_request_tx_payload_rules`) now requires the AiRequest to
-  carry, at **outputs[1]**, a **CSV-pay-to-pubkey escrow** worth ≥ `inference_reward`, while the
-  on-chain fee only needs to cover `priority_fee`. Our builder still burned `reward + priority_fee` as
-  the fee and emitted no escrow. Rebuilt `src/mobile/ai/tx.ts` to the current protocol: output[0] =
-  change, output[1] = escrow (CSV-p2pk to the requester's OWN pubkey, value = reward), fee = priority
-  fee (or the mass minimum). The reward is now locked in the escrow (the user's own funds, not burned)
-  rather than paid as fee. The v1.0.5 token-scaled minimum reward is unchanged; Send and Consolidate
-  are untouched. New `tests/aiEscrow.test.ts` builds a real signed AiRequest with the WASM signer and
-  validates output[1] against a faithful replica of the node's `is_csv_pay_to_pubkey` + escrow/fee
-  rules (102 tests pass).
+- **AiRequest rejected: "missing escrow output[1] (required for UTXO escrow design)".** Keryx moved AI
+  requests from the old fee-based model to a **UTXO-escrow** design: consensus (keryx-node
+  `utxo_validation.rs::check_ai_request_tx_payload_rules`) now requires **outputs[1]** to be a
+  **CSV-pay-to-pubkey escrow** worth ≥ `inference_reward`, with the on-chain fee only covering
+  `priority_fee`. Our builder still burned `reward + priority_fee` as the fee and emitted no escrow.
+  Rebuilt `src/mobile/ai/tx.ts`: output[0] = change, output[1] = escrow (CSV-p2pk to the requester's
+  own pubkey, value = reward, locked ~36,000 blocks / ~1h like the rest of the network), fee = priority
+  fee (or the mass minimum). The v1.0.5 token-scaled minimum reward is unchanged; Send/Consolidate are
+  untouched.
+
+### Added
+- **Escrow reclaim — escrowed rewards are never left stuck.** The reward locked in each AiRequest
+  escrow returns to the wallet after its CSV window. The wallet tracks escrow outpoints locally
+  (they aren't indexed under a normal address), **auto-sweeps** any matured escrows on the next AI
+  request, and offers a **"Reclaim" action** (with a held/claimable summary) in the AI tab. Reclaim
+  builds a CSV-satisfying spend and signs the escrow input with `createInputSignature` (the escrow is
+  the user's own key). New `signEscrowReclaim`, `MobileWallet.escrowSummary()`/`reclaimEscrows()`, and
+  `src/mobile/ai/escrow.ts`.
+
+### Tests
+- `tests/aiEscrow.test.ts` (escrow output vs a replica of the node's `is_csv_pay_to_pubkey`/escrow/fee
+  rules), `tests/aiEscrowReclaim.test.ts` (full lifecycle: request → escrow → reclaim spend,
+  real WASM signing, sequence/signature validated), and `tests/escrowStore.test.ts`. **108 tests pass,
+  tsc clean; Send/Consolidate and the v1.0.5 reward-min fix unaffected.**
 
 ## [1.0.5] — 2026-07-26
 

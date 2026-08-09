@@ -10,6 +10,8 @@ export type { ConsolidateInfo } from "../chain";
 import type { SecureStore } from "../secureStore";
 import { deriveAddresses, deriveKeyMap, firstReceiveAddress } from "./derivation";
 import { signAiRequest } from "../ai/tx";
+import { signEscrowReclaim, type EscrowUtxo } from "../chain";
+import { addEscrow, listEscrows, removeEscrows, isMatured, outpointKey } from "../ai/escrow";
 import {
   miningSummary,
   holderKeepBps,
@@ -68,6 +70,7 @@ export interface AiRequestResult {
   txId: string;
   requestHash: string;
   feeSompi: bigint;
+  escrowSompi: bigint; // reward locked in the escrow output (reclaimable after the CSV window)
 }
 
 export interface AiResponseFound {
@@ -465,11 +468,105 @@ export class MobileWallet {
 
     const res = await this.chain.broadcast(signed.broadcastBody);
     if (!res.ok) throw new Error(res.error ?? "Broadcast failed.");
+
+    // Track the escrow so we can reclaim the reward after its CSV window (it isn't indexed under a
+    // normal address). Then opportunistically sweep any PREVIOUSLY-matured escrows while we still hold
+    // the mnemonic — so escrowed rewards don't pile up (best-effort; failures are retried later).
+    const owner = this.addresses.receive[0];
+    addEscrow(owner, {
+      txid: res.transactionId || signed.txId,
+      index: 1,
+      amountSompi: signed.escrowSompi.toString(),
+      scriptHex: signed.escrowScriptHex,
+      sequence: signed.escrowSequence.toString(),
+      createdDaa: info.lastDaaScore.toString(),
+      requestHash: signed.requestHash,
+    });
+    try {
+      await this.reclaimMatured(phrase, info);
+    } catch {
+      /* best-effort sweep — a manual reclaim / next request retries */
+    }
+
     return {
       txId: res.transactionId || signed.txId,
       requestHash: signed.requestHash,
       feeSompi: signed.feeSompi,
+      escrowSompi: signed.escrowSompi,
     };
+  }
+
+  /** Total escrowed reward held on this wallet, and how much is reclaimable now (read-only). */
+  async escrowSummary(): Promise<{
+    totalSompi: bigint;
+    maturedSompi: bigint;
+    count: number;
+    maturedCount: number;
+  }> {
+    const empty = { totalSompi: 0n, maturedSompi: 0n, count: 0, maturedCount: 0 };
+    if (!this.addresses) return empty;
+    const all = listEscrows(this.addresses.receive[0]);
+    if (all.length === 0) return empty;
+    const info = await this.chain.getInfo();
+    let totalSompi = 0n;
+    let maturedSompi = 0n;
+    let maturedCount = 0;
+    for (const e of all) {
+      const amt = BigInt(e.amountSompi);
+      totalSompi += amt;
+      if (isMatured(e, info.lastDaaScore)) {
+        maturedSompi += amt;
+        maturedCount++;
+      }
+    }
+    return { totalSompi, maturedSompi, count: all.length, maturedCount };
+  }
+
+  /** Reclaim all matured AiRequest escrows back to the wallet. Requires the password (derives keys). */
+  async reclaimEscrows(
+    password: string
+  ): Promise<{ reclaimedSompi: bigint; txId: string | null; count: number; remaining: number }> {
+    if (!this.addresses) throw new Error("Wallet is locked.");
+    const phrase = this.revealMnemonic(password); // wrong password throws here
+    const info = await this.chain.getInfo();
+    const r = await this.reclaimMatured(phrase, info);
+    const remaining = listEscrows(this.addresses.receive[0]).length;
+    if (!r) return { reclaimedSompi: 0n, txId: null, count: 0, remaining };
+    return { ...r, remaining };
+  }
+
+  /** Build + broadcast a single tx reclaiming every matured escrow. Returns null if none/failed. */
+  private async reclaimMatured(
+    phrase: string,
+    info: { lastDaaScore: bigint }
+  ): Promise<{ reclaimedSompi: bigint; txId: string; count: number } | null> {
+    const owner = this.addresses!.receive[0];
+    const matured = listEscrows(owner).filter((e) => isMatured(e, info.lastDaaScore));
+    if (matured.length === 0) return null;
+
+    const key = deriveKeyMap(phrase, this.networkId, this.scanWindow).get(owner);
+    if (!key) return null;
+
+    const escrows: EscrowUtxo[] = matured.map((e) => ({
+      transactionId: e.txid,
+      index: e.index,
+      amountSompi: BigInt(e.amountSompi),
+      scriptPublicKey: e.scriptHex,
+      sequence: BigInt(e.sequence),
+      blockDaaScore: BigInt(e.createdDaa),
+    }));
+    const signed = signEscrowReclaim({
+      escrows,
+      key,
+      destinationAddress: owner,
+      networkId: this.networkId,
+    });
+    const res = await this.chain.broadcast(signed.broadcastBody);
+    if (!res.ok) return null; // e.g. CSV lock not yet met on-chain — keep records, retry later
+
+    removeEscrows(owner, matured.map((e) => outpointKey(e.txid, e.index)));
+    const escrowed = escrows.reduce((s, e) => s + e.amountSompi, 0n);
+    return { reclaimedSompi: escrowed - signed.feeSompi, txId: res.transactionId || signed.txId, count: matured.length };
   }
 
   /**

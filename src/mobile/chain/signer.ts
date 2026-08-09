@@ -188,4 +188,82 @@ export function signConsolidate(req: ConsolidateRequest): SignedSpend {
   const broadcastBody = buildBroadcastBody(obj);
   return { txId: obj.id ?? "", broadcastBody, feeSompi: fee, inputCount: used.length };
 }
+// ---- AiRequest escrow reclaim ------------------------------------------------------------------
+//
+// An AiRequest locks its inference_reward in a CSV-pay-to-pubkey escrow output (see ai/tx.ts). After
+// the CSV relative-lock (AI_ESCROW_CSV_BLOCKS blocks) elapses, the requester — the escrow's pubkey
+// owner — reclaims it. The escrow UTXO is NOT indexed under a normal address (its script class is
+// CsvPubKey), so the wallet spends it from locally-tracked outpoints. `signTransaction` only
+// auto-signs standard p2pk, so each escrow input is signed manually with `createInputSignature`; the
+// signature_script is the same 65-byte schnorr push a p2pk spend uses (OP_CSV just pre-checks the
+// input sequence, then the trailing `<pubkey> OP_CHECKSIG` verifies the signature).
+
+export interface EscrowUtxo {
+  transactionId: string;
+  index: number; // always 1 for an AiRequest escrow
+  amountSompi: bigint;
+  scriptPublicKey: string; // CSV-p2pk hex
+  sequence: bigint; // CSV relative-lock (blocks) — must be set on the spending input to satisfy OP_CSV
+  blockDaaScore: bigint;
+}
+
+export interface EscrowReclaimRequest {
+  escrows: EscrowUtxo[];
+  /** The key that owns the escrow pubkey (the wallet's receive[0] key). */
+  key: { toString(): string } | string;
+  destinationAddress: string; // where reclaimed funds land (receive[0])
+  networkId: string;
+  extraFeeSompi?: bigint;
+}
+
+/** Build + sign a transaction that reclaims matured AiRequest escrow outputs back to the wallet. */
+export function signEscrowReclaim(req: EscrowReclaimRequest): SignedSpend {
+  if (req.escrows.length === 0) throw new Error("No escrow outputs to reclaim.");
+  const entries = req.escrows.map((e) => ({
+    address: req.destinationAddress,
+    outpoint: { transactionId: e.transactionId, index: e.index },
+    amount: e.amountSompi,
+    scriptPublicKey: { version: 0, script: e.scriptPublicKey },
+    blockDaaScore: e.blockDaaScore,
+    isCoinbase: false,
+  }));
+  const total = req.escrows.reduce((s, e) => s + e.amountSompi, 0n);
+
+  const build = (outAmount: bigint): any => {
+    const tx: any = kaspa.createTransaction(
+      entries as any,
+      [{ address: req.destinationAddress, amount: outAmount }] as any,
+      0n
+    );
+    // Satisfy OP_CSV on each input: the spending sequence (blocks) must be >= the escrow's lock.
+    const inputs = tx.inputs;
+    req.escrows.forEach((e, i) => {
+      inputs[i].sequence = e.sequence;
+    });
+    tx.inputs = inputs;
+    return tx;
+  };
+
+  let tx = build(total);
+  const massFee = (kaspa.calculateTransactionFee(req.networkId, tx) ?? 0n) as bigint;
+  const fee = (massFee > KERYX_MIN_FEE ? massFee : KERYX_MIN_FEE) + (req.extraFeeSompi ?? 0n);
+  const out = total - fee;
+  if (out <= 0n) throw new Error("Escrowed amount is below the network fee — nothing to reclaim.");
+  tx = build(out);
+
+  // Manually sign each CSV-p2pk input (signTransaction only auto-signs standard p2pk).
+  const priv = new kaspa.PrivateKey(typeof req.key === "string" ? req.key : req.key.toString());
+  const inputs = tx.inputs;
+  for (let i = 0; i < req.escrows.length; i++) {
+    // createInputSignature returns the complete signature_script (the OP_DATA_65 push of the
+    // 64-byte schnorr sig + 1-byte sighash type) — the same push a standard p2pk spend uses, which is
+    // exactly what the trailing `<pubkey> OP_CHECKSIG` of the CSV-p2pk escrow needs.
+    inputs[i].signatureScript = kaspa.createInputSignature(tx, i, priv, kaspa.SighashType.All) as string;
+  }
+  tx.inputs = inputs;
+
+  const obj = tx.serializeToObject() as unknown as SerializableTx & { id?: string };
+  const broadcastBody = buildBroadcastBody(obj);
+  return { txId: obj.id ?? "", broadcastBody, feeSompi: fee, inputCount: req.escrows.length };
+}
 // end of signer.ts

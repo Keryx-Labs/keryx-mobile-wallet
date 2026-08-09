@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../WalletProvider";
 import { Button, Card, Toast, copy } from "../kit";
 import { AI_MODELS, modelById, effectiveMinRewardSompi } from "../../ai/models";
+import { EscrowBanner } from "./EscrowBanner";
 import { MIN_AI_REQUEST_PRIORITY_FEE } from "../../ai/payload";
 import { formatKrx, krxToSompi, krxNumber } from "../format";
 import { ensureNotifPermission, notifyAiAnswer } from "../../notifications";
@@ -181,7 +182,7 @@ export function Ai() {
     setModelId(h.modelId);
     setPrompt(h.prompt);
     setAnswer(null);
-    setReq({ txId: h.txId, requestHash: h.requestHash, feeSompi: BigInt(h.feeSompi) });
+    setReq({ txId: h.txId, requestHash: h.requestHash, feeSompi: BigInt(h.feeSompi), escrowSompi: 0n });
     attempts.current = 0;
     setStatus("Loading result\u2026");
     setStage("submitted");
@@ -203,8 +204,9 @@ export function Ai() {
 
       {showWarn && (
         <div className="relative rounded-2xl bg-amber-500/10 px-4 py-3 pr-9 text-sm text-amber-300">
-          Experimental. Each request is paid in real KRX to the miner network and can’t be refunded.
-        Prompts and results are published to a public network — don’t include anything private.
+          Experimental. Each request burns a small priority fee (~0.3 KRX) in real KRX; the larger
+          inference reward is held in an on-chain escrow and returns to your wallet after its lock
+          (~1h). Prompts and results are published to a public network — don’t include anything private.
           <button
             aria-label="Dismiss warning"
             onClick={hideWarn}
@@ -214,6 +216,8 @@ export function Ai() {
           </button>
         </div>
       )}
+
+      <EscrowBanner />
 
       {stage === "compose" && (
         <>

@@ -30,9 +30,24 @@ import {
 const OP_CHECKSEQUENCEVERIFY = 0xb1;
 const OP_DATA_32 = 0x20;
 const OP_CHECKSIG = 0xac;
-// Minimal relative-timelock sequence for the escrow (consensus checks only the script CLASS + value,
-// not the lock value; a small value keeps the bond reclaimable soonest). seq_len = 1, value = 1.
-const ESCROW_SEQUENCE_BYTES = [0x01];
+
+// Relative-timelock (in blocks/DAA) the escrow is locked for before the requester can reclaim it.
+// Matches the protocol's escrow/challenge window (keryx-node: "escrow ... locked via CSV, 36,000
+// blocks", ~1h at 10 BPS). Consensus checks only the escrow script CLASS + value, not this lock value,
+// but we use the canonical window so the escrow behaves like the rest of the network.
+export const AI_ESCROW_CSV_BLOCKS = 36000n;
+
+/** Minimal little-endian byte encoding of a u64 (>=1 byte). Used for the CSV sequence push. */
+function u64MinLeBytes(v: bigint): number[] {
+  const out: number[] = [];
+  let x = v;
+  while (x > 0n) {
+    out.push(Number(x & 0xffn));
+    x >>= 8n;
+  }
+  return out.length ? out : [0];
+}
+const ESCROW_SEQUENCE_BYTES = u64MinLeBytes(AI_ESCROW_CSV_BLOCKS);
 
 export interface AiRequestSpend {
   utxos: Utxo[];
@@ -52,6 +67,8 @@ export interface SignedAiRequest {
   broadcastBody: BroadcastTx;
   feeSompi: bigint; // on-chain (burned) fee — covers priority_fee
   escrowSompi: bigint; // reward locked in output[1]
+  escrowScriptHex: string; // the CSV-p2pk script of output[1] (needed to reclaim it later)
+  escrowSequence: bigint; // CSV relative-lock (blocks) the escrow is locked for
   inputCount: number;
   payloadHex: string;
 }
@@ -172,6 +189,8 @@ export function signAiRequest(req: AiRequestSpend): SignedAiRequest {
     broadcastBody,
     feeSompi: fee,
     escrowSompi: reward,
+    escrowScriptHex: buildEscrowScriptHex(req.changeAddress),
+    escrowSequence: AI_ESCROW_CSV_BLOCKS,
     inputCount: used.length,
     payloadHex: broadcastBody.payload,
   };
