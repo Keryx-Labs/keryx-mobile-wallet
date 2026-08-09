@@ -2,10 +2,18 @@
 // then emits a broadcast body for the REST Gateway. Same security seam as the spend signer: the
 // network layer only ever sees the resulting signed transaction (public data), never keys or seed.
 //
-// An AiRequest is a special-subnetwork (0300…) transaction whose PAYLOAD carries the request
-// (model, prompt, reward, priority-fee) and whose on-chain FEE (inputs − outputs) IS the payment
-// miners collect. So we build it like a "spend to nobody": inputs → change only, with the fee set to
-// exactly reward + priorityFee. No destination output; the miner claims the fee by answering.
+// PROTOCOL (current, "UTXO escrow" design — keryx-node consensus
+// `pipeline/virtual_processor/utxo_validation.rs::check_ai_request_tx_payload_rules`):
+//   - subnetwork 0300…, payload = [model_id:32][max_tokens:4 LE][inference_reward:8 LE][priority_fee:8 LE][prompt…]
+//   - output[1] MUST be a CSV-pay-to-pubkey escrow (script class `CsvPubKey`) worth >= inference_reward.
+//     The reward is LOCKED in this escrow output — NOT burned as fee (the old design). The escrow is a
+//     bond spendable by its pubkey holder; we set it to the requester's OWN pubkey so the funds stay in
+//     the user's control (miners are paid by the coinbase subsidy, not by spending this escrow).
+//   - the on-chain fee (inputs − outputs) only needs to cover `priority_fee` (>= MIN_AI_REQUEST_PRIORITY_FEE),
+//     which is the burned network fee.
+//   - inference_reward >= model_base + ceil(max_tokens/64) * INFERENCE_REWARD_TOKEN_STEP (enforced by the UI).
+// So we build: inputs → [output0 = change to self, output1 = escrow(reward)], fee = priority_fee (or the
+// mass minimum if higher).
 
 import * as kaspa from "../../sdk/kaspa.js";
 import type { Utxo } from "../chain";
@@ -18,26 +26,32 @@ import {
   type AiRequest,
 } from "./payload";
 
+// Script opcodes for the CSV-pay-to-pubkey escrow (keryx-node crypto/txscript).
+const OP_CHECKSEQUENCEVERIFY = 0xb1;
+const OP_DATA_32 = 0x20;
+const OP_CHECKSIG = 0xac;
+// Minimal relative-timelock sequence for the escrow (consensus checks only the script CLASS + value,
+// not the lock value; a small value keeps the bond reclaimable soonest). seq_len = 1, value = 1.
+const ESCROW_SEQUENCE_BYTES = [0x01];
+
 export interface AiRequestSpend {
   utxos: Utxo[];
-  /** Private keys (or hex strings) that can sign the chosen inputs. */
   keys: Array<{ toString(): string } | string>;
-  changeAddress: string;
+  changeAddress: string; // also the escrow pubkey owner (the requester)
   networkId: string;
-  modelId: string; // 32-byte hex
+  modelId: string;
   prompt: string;
   maxTokens: number;
-  /** Inference reward paid to the miner (must be ≥ the model minimum). */
   rewardSompi: bigint;
-  /** Extra priority fee on top of the reward; defaults to the protocol minimum. */
   priorityFeeSompi?: bigint;
 }
 
 export interface SignedAiRequest {
   txId: string;
-  requestHash: string; // hex — matches the AiResponse that answers this request
+  requestHash: string;
   broadcastBody: BroadcastTx;
-  feeSompi: bigint; // total on-chain fee = reward + priorityFee (the miner's payment)
+  feeSompi: bigint; // on-chain (burned) fee — covers priority_fee
+  escrowSompi: bigint; // reward locked in output[1]
   inputCount: number;
   payloadHex: string;
 }
@@ -53,16 +67,40 @@ function toEntry(u: Utxo): any {
   };
 }
 
+function hexToBytes(hex: string): number[] {
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  const out: number[] = [];
+  for (let i = 0; i < clean.length; i += 2) out.push(parseInt(clean.slice(i, i + 2), 16));
+  return out;
+}
+function bytesToHex(bytes: number[]): string {
+  return bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /**
- * Build + sign an AiRequest offline. Reuses the audited synchronous SDK path
- * (`createTransaction` → `signTransaction`), setting the AI subnetwork id + payload before signing
- * so the signature covers them. Throws on insufficient funds.
+ * Build the CSV-pay-to-pubkey escrow script for `address`, reusing its p2pk pubkey:
+ *   [seq_len][seq…][OP_CSV][OP_DATA_32][32-byte pubkey][OP_CHECKSIG]
+ * (the exact shape keryx-node `ScriptClass::is_csv_pay_to_pubkey` accepts). Returns hex.
  */
+export function buildEscrowScriptHex(address: string): string {
+  const p2pk = kaspa.payToAddressScript(address) as { version: number; script: string };
+  const p2pkBytes = hexToBytes(p2pk.script);
+  // A standard schnorr p2pk is exactly: OP_DATA_32 <32-byte pubkey> OP_CHECKSIG.
+  if (p2pkBytes.length !== 34 || p2pkBytes[0] !== OP_DATA_32 || p2pkBytes[33] !== OP_CHECKSIG) {
+    throw new Error("Unexpected change-address script; cannot build the AI escrow output.");
+  }
+  const seq = ESCROW_SEQUENCE_BYTES;
+  const bytes = [seq.length, ...seq, OP_CHECKSEQUENCEVERIFY, ...p2pkBytes];
+  return bytesToHex(bytes);
+}
+
+/** Build + sign an AiRequest offline with the required escrow output[1]. Throws on insufficient funds. */
 export function signAiRequest(req: AiRequestSpend): SignedAiRequest {
   if (req.maxTokens <= 0) throw new Error("maxTokens must be greater than zero.");
   if (req.rewardSompi <= 0n) throw new Error("The inference reward must be greater than zero.");
   const priorityFee = req.priorityFeeSompi ?? MIN_AI_REQUEST_PRIORITY_FEE;
   const reward = req.rewardSompi;
+
   const request: AiRequest = {
     modelId: req.modelId,
     maxTokens: req.maxTokens,
@@ -70,11 +108,8 @@ export function signAiRequest(req: AiRequestSpend): SignedAiRequest {
     priorityFee,
     prompt: req.prompt,
   };
-  const payloadBytes = serializeAiRequest(request); // throws if prompt too long / bad model id
+  const payloadBytes = serializeAiRequest(request);
   const requestHash = aiRequestHash(request);
-
-  // The miner's payment == the on-chain fee (inputs − outputs).
-  const fee = reward + priorityFee;
 
   const sorted = [...req.utxos].sort((a, b) =>
     a.amountSompi < b.amountSompi ? 1 : a.amountSompi > b.amountSompi ? -1 : 0
@@ -82,33 +117,50 @@ export function signAiRequest(req: AiRequestSpend): SignedAiRequest {
   const used = sorted.slice(0, MAX_TX_INPUTS);
   if (used.length === 0) throw new Error("No spendable UTXOs.");
   const total = used.reduce((s, e) => s + e.amountSompi, 0n);
-  if (fee > total) {
+
+  // The escrow (reward) is an OUTPUT; the fee only needs to cover priority_fee. Need change > 0 so the
+  // escrow lands at output[1] (consensus requires outputs[1] to be the escrow).
+  const needFloor = reward + priorityFee;
+  if (total <= needFloor) {
     if (sorted.length > used.length) {
       throw new Error(
         `This request needs more than ${MAX_TX_INPUTS} UTXOs in one transaction. ` +
           `Consolidate your funds first, then try again.`
       );
     }
-    throw new Error("Your balance can't cover this AI request (reward + priority fee).");
+    throw new Error("Your balance can't cover this AI request (reward + priority fee + change).");
   }
-  const change = total - fee;
 
   const entries = used.map(toEntry);
-  const outs: Array<{ address: string; amount: bigint }> =
-    change > 0n ? [{ address: req.changeAddress, amount: change }] : [];
+  const escrowSpk = new kaspa.ScriptPublicKey(0, buildEscrowScriptHex(req.changeAddress) as any);
 
-  // payload set via createTransaction; subnetwork id + gas set before signing so they're covered.
-  const tx: any = kaspa.createTransaction(entries as any, outs as any, 0n, payloadBytes as any);
-  tx.subnetworkId = AI_REQUEST_SUBNETWORK_ID;
-  tx.gas = 0n;
+  const build = (fee: bigint): { tx: any; change: bigint } => {
+    const change = total - reward - fee;
+    // output[0] = change to self (created via createTransaction so it's a proper p2pk output),
+    // then output[1] = the escrow, set before signing so the signature covers it.
+    const tx: any = kaspa.createTransaction(
+      entries as any,
+      [{ address: req.changeAddress, amount: change }] as any,
+      0n,
+      payloadBytes as any
+    );
+    const changeOut = tx.outputs[0];
+    tx.outputs = [changeOut, new kaspa.TransactionOutput(reward, escrowSpk)];
+    tx.subnetworkId = AI_REQUEST_SUBNETWORK_ID;
+    tx.gas = 0n;
+    return { tx, change };
+  };
 
-  // Sanity: our fee must cover the mass-based minimum for a payload-carrying tx.
+  // First size with fee = priority_fee, then bump to the mass minimum if that's higher.
+  let fee = priorityFee;
+  let { tx, change } = build(fee);
   const massFee = (kaspa.calculateTransactionFee(req.networkId, tx) ?? 0n) as bigint;
   if (massFee > fee) {
-    throw new Error(
-      `Raise your bid: the network mass fee (${massFee} sompi) exceeds reward + priority fee (${fee} sompi).`
-    );
+    fee = massFee;
+    if (total <= reward + fee) throw new Error("Your balance can't cover this AI request (network fee).");
+    ({ tx, change } = build(fee));
   }
+  if (change <= 0n) throw new Error("Your balance can't cover this AI request (reward + fee + change).");
 
   const signers = req.keys.map((k) => (typeof k === "string" ? k : k.toString()));
   const signed = kaspa.signTransaction(tx as any, signers as any, true);
@@ -119,6 +171,7 @@ export function signAiRequest(req: AiRequestSpend): SignedAiRequest {
     requestHash,
     broadcastBody,
     feeSompi: fee,
+    escrowSompi: reward,
     inputCount: used.length,
     payloadHex: broadcastBody.payload,
   };

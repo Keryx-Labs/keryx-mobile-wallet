@@ -2,6 +2,22 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.0.6] — 2026-08-03 (unreleased)
+
+### Fixed
+- **AiRequest rejected: "missing escrow output[1] (required for UTXO escrow design)".** Keryx moved
+  AI requests from the old fee-based model to a **UTXO-escrow** design: the consensus validator
+  (keryx-node `utxo_validation.rs::check_ai_request_tx_payload_rules`) now requires the AiRequest to
+  carry, at **outputs[1]**, a **CSV-pay-to-pubkey escrow** worth ≥ `inference_reward`, while the
+  on-chain fee only needs to cover `priority_fee`. Our builder still burned `reward + priority_fee` as
+  the fee and emitted no escrow. Rebuilt `src/mobile/ai/tx.ts` to the current protocol: output[0] =
+  change, output[1] = escrow (CSV-p2pk to the requester's OWN pubkey, value = reward), fee = priority
+  fee (or the mass minimum). The reward is now locked in the escrow (the user's own funds, not burned)
+  rather than paid as fee. The v1.0.5 token-scaled minimum reward is unchanged; Send and Consolidate
+  are untouched. New `tests/aiEscrow.test.ts` builds a real signed AiRequest with the WASM signer and
+  validates output[1] against a faithful replica of the node's `is_csv_pay_to_pubkey` + escrow/fee
+  rules (102 tests pass).
+
 ## [1.0.5] — 2026-07-26
 
 ### Fixed

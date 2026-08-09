@@ -164,7 +164,7 @@ describe("MobileWallet (REST send path, real crypto)", () => {
     await expect(w.send("pw", "not-an-address", 1n)).rejects.toThrow(/invalid destination/i);
   });
 
-  it("submits an AI request: builds a signed subnetwork-0300 tx with payload, fee = reward+priority", async () => {
+  it("submits an AI request: signed subnetwork-0300 tx with payload + escrow output[1]", async () => {
     const store = memStore();
     const ph = new MobileWallet(new FakeChain("x", 0n) as any, store, { scanWindow: 2 }).newMnemonic();
     const probe = new MobileWallet(new FakeChain("x", 0n) as any, store, { scanWindow: 2 });
@@ -186,11 +186,14 @@ describe("MobileWallet (REST send path, real crypto)", () => {
 
     expect(r.txId).toBeTruthy();
     expect(r.requestHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(r.feeSompi).toBe(reward + 30_000_000n); // reward + default priority fee
+    expect(r.feeSompi).toBeGreaterThanOrEqual(30_000_000n); // priority fee only (reward is escrowed, not burned)
     // The signed body is an AI-subnetwork tx carrying the request payload.
     expect(chain.lastBody!.subnetwork_id).toBe(AI_REQUEST_SUBNETWORK_ID);
     expect(chain.lastBody!.payload.startsWith(model.id)).toBe(true); // payload begins with model_id
     expect(chain.lastBody!.inputs[0].signature_script.length).toBeGreaterThan(0);
+    // The reward is locked in the escrow output[1], not spent as fee (UTXO escrow design).
+    expect(chain.lastBody!.outputs.length).toBe(2);
+    expect(chain.lastBody!.outputs[1].amount).toBe(reward);
 
     // findAiResponse: unanswered request (in feed, no result yet) -> null.
     chain.inferences = [
