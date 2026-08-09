@@ -1,7 +1,9 @@
-// Address book — saved contacts (with labels) + recent recipients. Stored LOCALLY only (localStorage),
-// never uploaded anywhere; the phone's own contacts are never accessed. Keyed by the wallet's primary
-// address so a different imported wallet doesn't see another wallet's list. Only public data (Keryx
-// addresses + user labels) is stored.
+// Address book — saved contacts (with labels) + recent recipients. Stored LOCALLY only, never uploaded
+// anywhere; the phone's own contacts are never accessed. Keyed by the wallet's primary address so a
+// different imported wallet doesn't see another wallet's list. Only public data (Keryx addresses +
+// user labels) is stored. Persisted via the durable store so it survives APK updates / WebView resets.
+
+import { durableGet, durableSet } from "./durable";
 
 const KEY = "keryx.addrbook.v1";
 const MAX_RECENTS = 12;
@@ -23,18 +25,14 @@ interface Book {
 
 function read(): Book | null {
   try {
-    const s = localStorage.getItem(KEY);
+    const s = durableGet(KEY);
     return s ? (JSON.parse(s) as Book) : null;
   } catch {
     return null;
   }
 }
 function write(b: Book): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(b));
-  } catch {
-    /* non-fatal */
-  }
+  void durableSet(KEY, JSON.stringify(b));
 }
 function forWallet(wallet: string): Book {
   const b = read();

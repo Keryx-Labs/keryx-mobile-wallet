@@ -113,6 +113,12 @@ export function ConsolidateRow({ onOpenModal }: { onOpenModal: () => void }) {
       );
     if (status === "error")
       return <span className="rounded-full bg-red-500/15 px-3 py-1 text-xs text-red-300">{msg}</span>;
+    if (app.resumableConsolidation)
+      return (
+        <span className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300">
+          Resume
+        </span>
+      );
     return (
       <span className="rounded-full bg-slate-700/60 px-3 py-1 font-mono text-xs text-slate-400">
         {count == null ? "…" : `${count.toLocaleString()} UTXOs`}

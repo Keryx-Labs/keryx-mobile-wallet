@@ -28,6 +28,7 @@ class DirectNodeProvider implements ChainProvider {
   getUtxos() { return this.fail(); }
   getAddress() { return this.fail(); }
   getTransaction() { return this.fail(); }
+  getRichTransaction() { return this.fail(); }
   listRecentTransactions() { return this.fail(); }
   listInferences() { return this.fail(); }
   broadcast() { return this.fail(); }
@@ -56,6 +57,7 @@ export type {
   AddressSummary,
   TxDetail,
   RecentTx,
+  RichTx,
   InferenceRecord,
   BroadcastResult,
 } from "./types";

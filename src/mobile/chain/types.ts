@@ -69,6 +69,21 @@ export interface BroadcastResult {
   error?: string;
 }
 
+/**
+ * Rich transaction detail used to reconstruct wallet state from chain (AI history + escrow recovery):
+ * the payload, outputs (escrow outputs have an empty `address` — a non-standard CSV script), and each
+ * input's previous outpoint (to detect already-reclaimed escrows).
+ */
+export interface RichTx {
+  txId: string;
+  isAccepted: boolean;
+  blockDaaScore: bigint;
+  timestampMs: number;
+  payloadHex: string;
+  outputs: { index: number; address: string; amountSompi: bigint }[];
+  inputs: { prevTxId: string; prevIndex: number; address: string }[];
+}
+
 /** A lightweight recent-transaction record from the gateway's `/transactions` feed. */
 export interface RecentTx {
   txId: string;
@@ -97,6 +112,8 @@ export interface ChainProvider {
   getUtxos(address: string): Promise<Utxo[]>;
   getAddress(address: string): Promise<AddressSummary>;
   getTransaction(txid: string): Promise<TxDetail>;
+  /** Full transaction detail (payload + outputs + input outpoints) for chain-based recovery. */
+  getRichTransaction(txid: string): Promise<RichTx>;
   /** Recent transactions (newest first). */
   listRecentTransactions(limit: number): Promise<RecentTx[]>;
   /** AI inference feed (newest first) — the request + its answer once a miner responds. */

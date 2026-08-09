@@ -95,6 +95,29 @@ export class RestGatewayProvider implements ChainProvider {
     };
   }
 
+  async getRichTransaction(txid: string): Promise<import("./types").RichTx> {
+    const j = await httpGetJson(this.url(`/transactions/${encodeURIComponent(txid)}`), this.isNative);
+    const outs = Array.isArray(j.outputs) ? j.outputs : [];
+    const ins = Array.isArray(j.inputs) ? j.inputs : [];
+    return {
+      txId: String(j.tx_id ?? txid),
+      isAccepted: Boolean(j.is_accepted),
+      blockDaaScore: toBig(j.block?.daa_score ?? j.accepting_daa_score ?? 0),
+      timestampMs: Number(j.block?.timestamp_ms ?? 0),
+      payloadHex: String(j.payload_hex ?? ""),
+      outputs: outs.map((o: any, i: number) => ({
+        index: Number(o.output_index ?? i),
+        address: String(o.address ?? ""),
+        amountSompi: toBig(o.amount_sompi),
+      })),
+      inputs: ins.map((x: any) => ({
+        prevTxId: String(x.prev_tx_id ?? ""),
+        prevIndex: Number(x.prev_output_index ?? 0),
+        address: String(x.address ?? ""),
+      })),
+    };
+  }
+
   async getBalanceSompi(address: string): Promise<bigint> {
     const j = await httpGetJson(this.url(`/addresses/${encodeURIComponent(address)}/balance`), this.isNative);
     return toBig(j.balance_sompi);

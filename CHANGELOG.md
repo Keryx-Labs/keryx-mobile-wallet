@@ -2,6 +2,42 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.0.7] — 2026-08-09
+
+### Fixed
+- **"Recent requests" (and escrows / address book) no longer disappear after an app update.** That
+  state lived only in WebView `localStorage`, which Capacitor can evict or orphan across updates
+  (the seed was already mirrored to secure storage for exactly this reason). Moved AI history, escrow
+  records, the address book and consolidation progress to a **durable store** backed by
+  `@capacitor/preferences` (native, survives updates / WebView resets), with a one-time migration from
+  `localStorage` and an in-memory cache for synchronous reads. Corrupt/missing caches fail safe; no
+  secrets are stored.
+- **Multi-batch Consolidate is now durable and resumable — it no longer stops when the app is
+  suspended/closed.** The batch loop's progress is persisted to a durable, chain-state-driven session.
+  After app suspension / process death / reboot the wallet detects the interrupted run (a "Resume"
+  action appears) and continues from the REAL UTXO state: it waits for the in-flight batch to confirm
+  and then sweeps the rest. Because consolidation is a self-send it is idempotent — the design never
+  re-broadcasts blindly, can't double-spend consumed inputs, and can't be tricked into "finished" by a
+  transient empty/failed gateway read (the earlier partial-read fix is preserved) or into an endless
+  loop by newly-mined rewards (batch cap). Handles broadcast-with-lost-response, already-confirmed,
+  still-pending, rejected, and changing UTXO sets.
+
+### Added
+- **On-chain recovery after reinstall/restore.** `recoverFromChain()` reconstructs AI request history
+  and unspent escrow records from the wallet's OWN subnetwork-0300 transactions (identified by the
+  change-back-to-self output[0] + empty-address CSV escrow at output[1] + parsable payload), detects
+  already-reclaimed escrows (their outpoint appears as an input of a later tx), dedupes, and reconciles
+  the local caches. Runs automatically (read-only, idempotent) after unlock/import, so a fresh restore
+  recovers reclaimable rewards and the request list even though local storage was wiped. Local storage
+  is now a cache; the source of truth is reconstructable from chain.
+
+### Tests
+- `durable` (migration + WebView-reset survival), `recovery` (empty store → rescan → escrow + history
+  recovered → maturity → reclaim; reclaimed escrows not resurrected), `consolidateResume` (resume after
+  a simulated kill: no re-broadcast of the pending batch, no double-spend, correct completion, no
+  leftover session). **115 tests pass, tsc clean; Send / Consolidate / AI / escrow reclaim and the
+  v1.0.5–1.0.6 fixes all intact.**
+
 ## [1.0.6] — 2026-08-03
 
 ### Fixed

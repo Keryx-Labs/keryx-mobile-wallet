@@ -13,6 +13,7 @@ import type { AiRequestParams, AiRequestResult, AiResponseFound } from "../walle
 import { fetchIpfsText } from "../ai/ipfs";
 import { saveOverviewCache, loadOverviewCache, clearOverviewCache } from "../walletCache";
 import { addAiHistory } from "../ai/history";
+import { initDurable } from "../durable";
 import { openExternalUrl, openExplorerTx as explorerTxUrl } from "../externalLinks";
 import { isMinerMode, setMinerMode as persistMinerMode } from "../minerMode";
 import { addRecent } from "../addressBook";
@@ -42,6 +43,7 @@ interface AppState {
   biometricReady: boolean;
   biometricEnabled: boolean;
   minerMode: boolean;
+  resumableConsolidation: boolean;
 }
 
 interface AppCtx extends AppState {
@@ -129,6 +131,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     biometricReady: false,
     biometricEnabled: false,
     minerMode: isMinerMode(),
+    resumableConsolidation: false,
   });
   const patch = (p: Partial<AppState>) => setS((prev) => ({ ...prev, ...p }));
 
@@ -143,6 +146,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
+        await initDurable(); // load durable state (Preferences) + migrate localStorage before any reads
         await withTimeout(initWasm(), 25000, "Loading wallet engine");
         if (verifyAddressPrefix() !== "keryx") {
           // eslint-disable-next-line no-console
@@ -218,7 +222,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       lastSyncTs: cached?.ts ?? null,
     });
     runtime?.autoLock.notifyActivity();
+    // Offer to resume an interrupted consolidation (durable, chain-state-driven).
+    patch({ resumableConsolidation: wallet?.hasResumableConsolidation() ?? false });
     await refresh();
+    // Reconstruct AI history + escrow records from our own on-chain txs (covers reinstall/restore where
+    // local storage was wiped). Read-only, idempotent, best-effort — never blocks the UI.
+    void wallet
+      ?.recoverFromChain()
+      .then(() => {
+        if (wallet) patch({ resumableConsolidation: wallet.hasResumableConsolidation() });
+      })
+      .catch(() => {});
   }, [wallet, runtime, refresh]);
 
   const createOrImport = useCallback(

@@ -9,9 +9,26 @@ import type { ConsolidateInfo } from "../chain";
 export type { ConsolidateInfo } from "../chain";
 import type { SecureStore } from "../secureStore";
 import { deriveAddresses, deriveKeyMap, firstReceiveAddress } from "./derivation";
-import { signAiRequest } from "../ai/tx";
+import { signAiRequest, buildEscrowScriptHex, AI_ESCROW_CSV_BLOCKS } from "../ai/tx";
 import { signEscrowReclaim, type EscrowUtxo } from "../chain";
-import { addEscrow, listEscrows, removeEscrows, isMatured, outpointKey } from "../ai/escrow";
+import {
+  addEscrow,
+  listEscrows,
+  removeEscrows,
+  reconcileEscrows,
+  isMatured,
+  outpointKey,
+  type EscrowRecord,
+} from "../ai/escrow";
+import { mergeAiHistory, type AiHistoryEntry } from "../ai/history";
+import { parseAiRequestPayload, aiRequestHash } from "../ai/payload";
+import {
+  loadConsolidateSession,
+  saveConsolidateSession,
+  clearConsolidateSession,
+  hasActiveConsolidation,
+  type ConsolidateSession,
+} from "./consolidateSession";
 import {
   miningSummary,
   holderKeepBps,
@@ -293,13 +310,21 @@ export class MobileWallet {
     return consolidateInfo(utxos, info.lastDaaScore);
   }
 
+  /** True if a consolidation was started but never reached completion (offer Resume on wallet load). */
+  hasResumableConsolidation(): boolean {
+    return this.addresses ? hasActiveConsolidation(this.addresses.receive[0]) : false;
+  }
+
   /**
-   * Consolidate the WHOLE eligible set in ONE action — reproduces the official desktop wallet's
-   * auto-loop. A single authorization derives the keys once; then it submits batch after batch (each
-   * the largest ≤80 mature UTXOs swept into a single self-output), WAITING for each batch's inputs to
-   * be consumed by the network before reading the next set, until ≤1 UTXO remains. If a batch times
-   * out, the batches already submitted are real — it stops and reports. `onProgress` fires after each
-   * confirmed batch so the UI can show the count dropping live. Coinbase maturity is honored per batch.
+   * Consolidate the WHOLE eligible set in ONE action — the official desktop auto-loop, made DURABLE
+   * and RESUMABLE so it doesn't depend on the app staying foregrounded. A single authorization derives
+   * the keys once; then it submits batch after batch (largest ≤80 mature UTXOs swept into one self-
+   * output), WAITING for each batch's inputs to be consumed before reading the next set, until ≤1 UTXO
+   * remains. Progress is persisted to a durable session and driven by REAL chain/UTXO state, never a
+   * stored "done" flag — so after app suspension / process death / reboot the same call resumes: it
+   * waits for the in-flight batch to confirm (idempotent — consolidation is a self-send, so a re-picked
+   * batch can't lose funds), then continues. Coinbase maturity is honored per batch; the batch cap
+   * bounds it so new mining rewards can't create an endless loop. `onProgress` fires per confirmed batch.
    */
   async consolidate(
     password: string,
@@ -309,22 +334,65 @@ export class MobileWallet {
     const phrase = this.revealMnemonic(password); // one auth for the whole multi-batch run
     const keys = Array.from(deriveKeyMap(phrase, this.networkId, this.scanWindow).values());
     const changeAddress = this.addresses.receive[0];
+    const owner = changeAddress;
 
     const matureOf = (utxos: Utxo[], daa: bigint) =>
       utxos.filter((u) => !u.isCoinbase || daa - u.blockDaaScore >= COINBASE_MATURITY);
 
-    const txids: string[] = [];
-    let totalFee = 0n;
-    let totalInputs = 0;
+    // Load or start a durable session so the run survives suspension / process death / reboot.
+    const session: ConsolidateSession = loadConsolidateSession(owner) ?? {
+      owner,
+      active: true,
+      txids: [],
+      totalInputs: 0,
+      totalFeeSompi: "0",
+      pending: null,
+    };
+    session.active = true;
+    await saveConsolidateSession(session);
+
+    let totalFee = BigInt(session.totalFeeSompi);
     let remaining = 0;
+    let didWork = session.txids.length > 0;
 
     let info = await this.chain.getInfo();
     let utxos = await this.gatherUtxos();
 
+    // Resume: finish waiting for a previously-broadcast batch (idempotent — it's a self-send). We do
+    // NOT re-broadcast blindly: if the batch landed we detect its inputs gone; if it never landed the
+    // loop below re-picks those same UTXOs safely.
+    if (session.pending) {
+      try {
+        utxos = await this.waitForBatchConfirmed(new Set(session.pending.spent));
+        if (!session.txids.includes(session.pending.txid)) {
+          session.txids.push(session.pending.txid);
+          session.totalInputs += session.pending.spent.length;
+        }
+      } catch {
+        /* didn't confirm in time — leave the UTXOs; the loop re-picks them */
+      }
+      session.pending = null;
+      await saveConsolidateSession(session);
+      didWork = session.txids.length > 0;
+      info = await this.chain.getInfo();
+      utxos = await this.gatherUtxos();
+    }
+
+    const result = (): ConsolidateResult => ({
+      txids: session.txids,
+      batches: session.txids.length,
+      remaining,
+      totalInputs: session.totalInputs,
+      totalFeeSompi: totalFee,
+    });
+
     for (let batch = 0; batch < MAX_CONSOLIDATE_BATCHES; batch++) {
       const mature = matureOf(utxos, info.lastDaaScore);
       if (mature.length < 2) {
-        if (batch === 0) throw new Error("Need at least 2 spendable coins (UTXOs) to consolidate.");
+        if (!didWork) {
+          await clearConsolidateSession();
+          throw new Error("Need at least 2 spendable coins (UTXOs) to consolidate.");
+        }
         remaining = mature.length; // done — nothing left to compound
         break;
       }
@@ -336,32 +404,55 @@ export class MobileWallet {
         networkId: this.networkId,
         currentDaaScore: info.lastDaaScore,
       });
+      const spentArr = signed.broadcastBody.inputs.map((in_) => `${in_.transaction_id}:${in_.index}`);
+      // Persist the intended batch BEFORE broadcasting, so a lost response / kill resumes idempotently.
+      session.pending = { spent: spentArr, txid: signed.txId };
+      await saveConsolidateSession(session);
+
       const res = await this.chain.broadcast(signed.broadcastBody);
       if (!res.ok) {
-        if (batch === 0) throw new Error(res.error ?? "Broadcast failed.");
+        session.pending = null;
+        await saveConsolidateSession(session);
+        if (!didWork) {
+          await clearConsolidateSession();
+          throw new Error(res.error ?? "Broadcast failed.");
+        }
         break; // mid-run failure: keep the batches already done
       }
       const txid = res.transactionId || signed.txId;
-      txids.push(txid);
-      totalFee += signed.feeSompi;
-      totalInputs += signed.inputCount;
 
-      const spent = new Set(signed.broadcastBody.inputs.map((in_) => `${in_.transaction_id}:${in_.index}`));
       try {
-        utxos = await this.waitForBatchConfirmed(spent);
+        utxos = await this.waitForBatchConfirmed(new Set(spentArr));
       } catch {
-        // Timed out waiting for this batch — the submitted batches are real; stop and report.
+        // Timed out waiting — the batch is real (self-send). Record it and leave the session ACTIVE
+        // with the pending batch so a later Resume waits for it. Stop this run.
+        session.txids.push(txid);
+        session.totalInputs += signed.inputCount;
+        totalFee += signed.feeSompi;
+        session.totalFeeSompi = totalFee.toString();
+        session.pending = { spent: spentArr, txid };
+        await saveConsolidateSession(session);
         remaining = Math.max(0, mature.length - signed.inputCount + 1);
-        onProgress?.({ batch: batch + 1, remaining, txid });
-        break;
+        onProgress?.({ batch: session.txids.length, remaining, txid });
+        return result();
       }
+
+      session.txids.push(txid);
+      session.totalInputs += signed.inputCount;
+      totalFee += signed.feeSompi;
+      session.totalFeeSompi = totalFee.toString();
+      session.pending = null;
+      await saveConsolidateSession(session);
+      didWork = true;
+
       info = await this.chain.getInfo();
       remaining = matureOf(utxos, info.lastDaaScore).length;
-      onProgress?.({ batch: batch + 1, remaining, txid });
+      onProgress?.({ batch: session.txids.length, remaining, txid });
       if (remaining < 2) break;
     }
 
-    return { txids, batches: txids.length, remaining, totalInputs, totalFeeSompi: totalFee };
+    await clearConsolidateSession();
+    return result();
   }
 
   /**
@@ -473,7 +564,7 @@ export class MobileWallet {
     // normal address). Then opportunistically sweep any PREVIOUSLY-matured escrows while we still hold
     // the mnemonic — so escrowed rewards don't pile up (best-effort; failures are retried later).
     const owner = this.addresses.receive[0];
-    addEscrow(owner, {
+    await addEscrow(owner, {
       txid: res.transactionId || signed.txId,
       index: 1,
       amountSompi: signed.escrowSompi.toString(),
@@ -494,6 +585,77 @@ export class MobileWallet {
       feeSompi: signed.feeSompi,
       escrowSompi: signed.escrowSompi,
     };
+  }
+
+  /**
+   * Reconstruct AI request history + escrow records from the wallet's OWN on-chain transactions, so a
+   * reinstall / fresh restore (which wipes local storage) doesn't lose track of unspent escrow rewards
+   * or the request list. Read-only + idempotent: it identifies our AiRequests (subnetwork-0300 shape:
+   * change output[0] back to us, empty-address CSV escrow at output[1], real inputs, parsable payload),
+   * detects already-reclaimed escrows (their outpoint appears as an input of one of our later txs), and
+   * reconciles the local caches (no duplicates; reclaimed escrows are dropped). Never throws.
+   */
+  async recoverFromChain(maxTxs = 150): Promise<{ escrowsRecovered: number; historyRecovered: number }> {
+    if (!this.addresses) return { escrowsRecovered: 0, historyRecovered: 0 };
+    const owner = this.addresses.receive[0];
+    try {
+      // 1) our recent tx ids (from address history across all derived addresses)
+      const summaries = await pmap(this.allAddresses, 10, (a) => this.chain.getAddress(a).catch(() => null));
+      const txids = new Set<string>();
+      for (const s of summaries) if (s) for (const t of s.transactions) txids.add(t.txId);
+      const ids = [...txids].slice(0, maxTxs);
+      if (ids.length === 0) return { escrowsRecovered: 0, historyRecovered: 0 };
+
+      // 2) rich detail for each
+      const rich = await pmap(ids, 6, (id) => this.chain.getRichTransaction(id).catch(() => null));
+
+      // 3) every outpoint our txs have spent (to detect reclaimed escrows)
+      const spent = new Set<string>();
+      for (const r of rich)
+        if (r) for (const inp of r.inputs) if (inp.prevTxId) spent.add(`${inp.prevTxId}:${inp.prevIndex}`);
+
+      // 4) our AiRequests + their escrow output[1]
+      const escrowScript = buildEscrowScriptHex(owner); // deterministic for our own escrows
+      const foundEscrows: EscrowRecord[] = [];
+      const history: AiHistoryEntry[] = [];
+      for (const r of rich) {
+        if (!r || !r.isAccepted) continue;
+        const hasRealInputs = r.inputs.length > 0 && r.inputs.every((i) => /^[0-9a-f]{64}$/i.test(i.prevTxId));
+        if (!hasRealInputs) continue; // exclude coinbase / malformed
+        const out0 = r.outputs.find((o) => o.index === 0);
+        const out1 = r.outputs.find((o) => o.index === 1);
+        if (!out0 || out0.address !== owner) continue; // change must come back to us
+        if (!out1 || out1.address !== "") continue; // output[1] must be the non-standard (CSV) escrow
+        const req = parseAiRequestPayload(r.payloadHex);
+        if (!req) continue;
+        const hash = aiRequestHash(req);
+        history.push({
+          txId: r.txId,
+          requestHash: hash,
+          modelId: req.modelId,
+          prompt: req.prompt,
+          ts: r.timestampMs || Date.now(),
+          feeSompi: req.priorityFee.toString(),
+        });
+        foundEscrows.push({
+          txid: r.txId,
+          index: 1,
+          amountSompi: out1.amountSompi.toString(),
+          scriptHex: escrowScript,
+          sequence: AI_ESCROW_CSV_BLOCKS.toString(),
+          createdDaa: r.blockDaaScore.toString(),
+          requestHash: hash,
+        });
+      }
+
+      // 5) reconcile caches with real chain state (dedupe; drop reclaimed)
+      await reconcileEscrows(owner, foundEscrows, spent);
+      mergeAiHistory(owner, history);
+      const stillUnspent = foundEscrows.filter((e) => !spent.has(`${e.txid}:1`)).length;
+      return { escrowsRecovered: stillUnspent, historyRecovered: history.length };
+    } catch {
+      return { escrowsRecovered: 0, historyRecovered: 0 };
+    }
   }
 
   /** Total escrowed reward held on this wallet, and how much is reclaimable now (read-only). */
@@ -564,7 +726,7 @@ export class MobileWallet {
     const res = await this.chain.broadcast(signed.broadcastBody);
     if (!res.ok) return null; // e.g. CSV lock not yet met on-chain — keep records, retry later
 
-    removeEscrows(owner, matured.map((e) => outpointKey(e.txid, e.index)));
+    await removeEscrows(owner, matured.map((e) => outpointKey(e.txid, e.index)));
     const escrowed = escrows.reduce((s, e) => s + e.amountSompi, 0n);
     return { reclaimedSompi: escrowed - signed.feeSompi, txId: res.transactionId || signed.txId, count: matured.length };
   }

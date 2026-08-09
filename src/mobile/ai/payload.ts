@@ -60,6 +60,24 @@ export function serializeAiRequest(r: AiRequest): Uint8Array {
   return out;
 }
 
+/**
+ * Parse an AiRequest payload (hex) back into its fields. Used to reconstruct AI request history and
+ * escrow amounts from the wallet's own on-chain subnetwork-0300 transactions. Returns null if the
+ * payload is too short to be an AiRequest.
+ */
+export function parseAiRequestPayload(payloadHex: string): AiRequest | null {
+  const b = hexToBytes(payloadHex);
+  if (b.length < 52) return null; // model(32) + max_tokens(4) + reward(8) + priority(8)
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  return {
+    modelId: bytesToHex(b.slice(0, 32)),
+    maxTokens: dv.getUint32(32, true),
+    inferenceReward: dv.getBigUint64(36, true),
+    priorityFee: dv.getBigUint64(44, true),
+    prompt: new TextDecoder().decode(b.slice(52)),
+  };
+}
+
 /** Payload as hex (for the tx payload field). */
 export function aiRequestPayloadHex(r: AiRequest): string {
   return bytesToHex(serializeAiRequest(r));

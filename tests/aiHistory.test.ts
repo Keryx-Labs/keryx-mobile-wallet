@@ -11,7 +11,11 @@ beforeAll(() => {
     clear: () => map.clear(),
   };
 });
-beforeEach(() => (globalThis as any).localStorage.clear());
+import { __resetDurableForTests } from "../src/mobile/durable";
+beforeEach(() => {
+  (globalThis as any).localStorage.clear();
+  __resetDurableForTests();
+});
 
 const mk = (txId: string, prompt = "hi") => ({
   txId,

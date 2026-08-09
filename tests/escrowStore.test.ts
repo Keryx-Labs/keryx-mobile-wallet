@@ -8,10 +8,12 @@ import {
   addEscrow,
   listEscrows,
   removeEscrows,
+  reconcileEscrows,
   isMatured,
   outpointKey,
   type EscrowRecord,
 } from "../src/mobile/ai/escrow";
+import { __resetDurableForTests } from "../src/mobile/durable";
 
 beforeEach(() => {
   const map = new Map<string, string>();
@@ -21,6 +23,7 @@ beforeEach(() => {
     removeItem: (k: string) => void map.delete(k),
     clear: () => map.clear(),
   };
+  __resetDurableForTests();
 });
 
 const rec = (txid: string, createdDaa: string, seq = "36000"): EscrowRecord => ({
