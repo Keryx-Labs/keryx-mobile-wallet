@@ -146,7 +146,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        await initDurable(); // load durable state (Preferences) + migrate localStorage before any reads
+        // Load durable state (Preferences) + migrate localStorage before reads — but NEVER let a slow
+        // native plugin call block boot: time-box it and fall back to localStorage on timeout.
+        await withTimeout(initDurable(), 4000, "Loading storage").catch(() => {});
         await withTimeout(initWasm(), 25000, "Loading wallet engine");
         if (verifyAddressPrefix() !== "keryx") {
           // eslint-disable-next-line no-console

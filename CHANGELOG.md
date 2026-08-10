@@ -2,6 +2,16 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.0.8] — 2026-08-09
+
+### Fixed
+- **Hotfix for a boot hang introduced in 1.0.7.** The new durable-storage init (`initDurable`) awaited
+  the native `@capacitor/preferences` plugin at the very start of boot with no timeout; if that native
+  call didn't respond on a device, the app hung on the loading screen and never started. Every
+  Preferences call is now time-boxed and boot proceeds regardless (falling back to localStorage), so a
+  slow/unavailable plugin can no longer block startup. Durable persistence + migration still apply once
+  the plugin responds. (1.0.7 was withdrawn as latest.)
+
 ## [1.0.7] — 2026-08-09
 
 ### Fixed

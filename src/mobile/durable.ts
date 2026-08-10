@@ -23,9 +23,18 @@ export const DURABLE_KEYS = [
   "keryx.consolidate.session.v1",
 ] as const;
 
+// Never let a hung/slow native plugin call block the caller. Any Preferences op that doesn't resolve
+// within the budget is treated as "unavailable" so the wallet falls back to localStorage and boots.
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    p.catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
+
 async function preferences(): Promise<any | null> {
   try {
-    const mod: any = await import("@capacitor/preferences");
+    const mod: any = await withTimeout(import("@capacitor/preferences"), 2500);
     return mod?.Preferences ?? null;
   } catch {
     return null; // web / tests / plugin unavailable
@@ -35,6 +44,7 @@ async function preferences(): Promise<any | null> {
 /**
  * Load durable state into an in-memory cache (enabling synchronous reads) and migrate any values that
  * currently live only in localStorage into Preferences. Idempotent; safe to call more than once.
+ * MUST NOT block boot: every native call is time-boxed and failures fall back to localStorage.
  */
 export async function initDurable(): Promise<void> {
   if (initialized) return;
@@ -42,11 +52,8 @@ export async function initDurable(): Promise<void> {
   for (const key of DURABLE_KEYS) {
     let val: string | null = null;
     if (P) {
-      try {
-        val = (await P.get({ key })).value ?? null;
-      } catch {
-        /* ignore */
-      }
+      const got: any = await withTimeout(P.get({ key }), 2000);
+      val = got?.value ?? null;
     }
     if (val == null) {
       // First run after adding durable storage: migrate the existing localStorage value.
@@ -58,13 +65,7 @@ export async function initDurable(): Promise<void> {
       }
       if (ls != null) {
         val = ls;
-        if (P) {
-          try {
-            await P.set({ key, value: ls });
-          } catch {
-            /* ignore */
-          }
-        }
+        if (P) await withTimeout(P.set({ key, value: ls }), 2000);
       }
     }
     if (val != null) cache.set(key, val);
