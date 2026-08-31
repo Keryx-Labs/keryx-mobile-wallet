@@ -2,6 +2,34 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.0.9] — 2026-08-31 (network sync)
+
+Sync with the current Keryx network. Balance / history / send / receive / price / settings / persistence
+were unaffected (endpoints + tx format unchanged) and are untouched.
+
+### Fixed
+- **AI inference requests were being rejected — updated for the H8 "reward routing" hard fork.** Since
+  H8 (mainnet DAA 79,210,000; network is now ~88.2M) an AiRequest's escrow output[1] MUST be the
+  canonical keyless reward vault (`OP_RETURN "aivault"`), and the reward is minted by the coinbase to
+  the miner that answers. The wallet still built the old CSV-pay-to-pubkey escrow, which consensus now
+  rejects. `ai/tx.ts` now emits the vault escrow. The reward is therefore paid to the answering miner
+  (no longer reclaimable) — the AI-tab notice and escrow handling were updated to match. The legacy
+  reclaim path is kept for any pre-H8 escrow a user might still hold.
+- **AI model lineup was stale (H4 → H6).** EXAONE-4.0-1.2B and Mistral-7B-v0.3 are no longer served;
+  Qwen3.5-9B and Gemma-4-12B were added (GLM-4-9B, Qwen3.6-27B, Kimi-Linear-48B unchanged). Minimums
+  re-synced from params.rs `INFERENCE_REWARD_MINIMUMS_V2_H6`.
+
+### Added
+- **Dynamic model list.** The model picker now fetches the live lineup from the gateway's
+  `/api/v1/capabilities` feed (which now publishes model + model_id), so it tracks network model
+  changes without an app update. The bundled H6 list is the offline fallback and the per-model
+  minimum-reward source (capabilities doesn't include minimums). The max_tokens surcharge is unchanged.
+
+### Tests
+- Updated the model registry (H6), AiRequest escrow (routed vault) and reclaim (legacy CSV) tests; added
+  a `fetchLiveModels` test (parse capabilities, safe default for unknown models, fallback on error).
+  **117 tests pass, tsc + Vite build clean.**
+
 ## [1.0.8] — 2026-08-09
 
 ### Fixed

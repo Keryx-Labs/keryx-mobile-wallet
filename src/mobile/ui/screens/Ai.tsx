@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../WalletProvider";
 import { Button, Card, Toast, copy } from "../kit";
-import { AI_MODELS, modelById, effectiveMinRewardSompi } from "../../ai/models";
+import { AI_MODELS, modelById, effectiveMinRewardSompi, fetchLiveModels, type AiModel } from "../../ai/models";
 import { EscrowBanner } from "./EscrowBanner";
 import { MIN_AI_REQUEST_PRIORITY_FEE } from "../../ai/payload";
 import { formatKrx, krxToSompi, krxNumber } from "../format";
@@ -48,7 +48,22 @@ export function Ai() {
     reloadHistory();
   }, [reloadHistory]);
 
-  const model = modelById(modelId) ?? AI_MODELS[0];
+  // Live model lineup from the gateway's /capabilities feed (falls back to the bundled list). Keeps the
+  // picker in sync with the network without a code update.
+  const [models, setModels] = useState<AiModel[]>(AI_MODELS);
+  useEffect(() => {
+    let alive = true;
+    void fetchLiveModels().then((live) => {
+      if (!alive || live.length === 0) return;
+      setModels(live);
+      setModelId((cur) => (live.some((m) => m.id === cur) ? cur : live[Math.min(1, live.length - 1)].id));
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const model = models.find((m) => m.id === modelId) ?? models[0] ?? AI_MODELS[0];
   // Consensus minimum scales with max_tokens (surcharge per 64-token step) — not just the model base.
   const parsedMaxTokens = parseInt(maxTokens, 10);
   const effMinReward = effectiveMinRewardSompi(
@@ -204,9 +219,9 @@ export function Ai() {
 
       {showWarn && (
         <div className="relative rounded-2xl bg-amber-500/10 px-4 py-3 pr-9 text-sm text-amber-300">
-          Experimental. Each request burns a small priority fee (~0.3 KRX) in real KRX; the larger
-          inference reward is held in an on-chain escrow and returns to your wallet after its lock
-          (~1h). Prompts and results are published to a public network — don’t include anything private.
+          Experimental. Each request pays real KRX: a small priority fee (~0.3 KRX) is burned, and the
+          inference reward goes to the miner that answers (it is not refundable). Prompts and results are
+          published to a public network — don’t include anything private.
           <button
             aria-label="Dismiss warning"
             onClick={hideWarn}
@@ -224,7 +239,7 @@ export function Ai() {
           <Card>
             <div className="mb-2 font-semibold text-slate-100">Model</div>
             <div className="flex flex-col gap-2">
-              {AI_MODELS.map((m) => {
+              {models.map((m) => {
                 const on = m.id === modelId;
                 return (
                   <button

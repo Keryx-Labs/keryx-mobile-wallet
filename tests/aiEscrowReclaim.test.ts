@@ -13,14 +13,12 @@ import { dirname, resolve } from "node:path";
 
 // @ts-ignore
 import * as kaspa from "../src/sdk/kaspa.js";
-import { signAiRequest, AI_ESCROW_CSV_BLOCKS } from "../src/mobile/ai/tx";
+import { buildEscrowScriptHex, AI_ESCROW_CSV_BLOCKS } from "../src/mobile/ai/tx";
 import { signEscrowReclaim, signSpend } from "../src/mobile/chain";
 import { deriveKeyMap } from "../src/mobile/wallet/derivation";
-import { MIN_AI_REQUEST_PRIORITY_FEE } from "../src/mobile/ai/payload";
 import type { Utxo } from "../src/mobile/chain";
 
 const NET = "mainnet";
-const GLM = "fa2f13be0850e26c5ce86c7ac79da85e300c1da8b3290f9a18d47105f1f2140a";
 
 beforeAll(async () => {
   const map = new Map<string, string>();
@@ -70,37 +68,27 @@ function wallet() {
   return { address, key };
 }
 
-describe("AiRequest escrow reclaim lifecycle", () => {
-  it("reclaims a matured escrow back to the wallet with a valid CSV-satisfying spend", () => {
+// NOTE: since the H8 reward-routing fork, a NEW AiRequest escrow is the keyless vault (paid to the
+// miner, not reclaimable). This suite covers the LEGACY path: a pre-H8 CSV-pay-to-pubkey escrow the
+// wallet may still hold is reclaimed by the requester — the reclaim signer must still work.
+describe("legacy escrow reclaim lifecycle", () => {
+  it("reclaims a matured (pre-H8) CSV escrow back to the wallet with a valid CSV-satisfying spend", () => {
     const { address, key } = wallet();
     const reward = 170_000_000n;
+    const legacyTxId = "a1".repeat(32);
 
-    // 1) Build the AiRequest — the escrow is output[1].
-    const req = signAiRequest({
-      utxos: [fund(address, 10)],
-      keys: [key],
-      changeAddress: address,
-      networkId: NET,
-      modelId: GLM,
-      prompt: "hello",
-      maxTokens: 256,
-      rewardSompi: reward,
-      priorityFeeSompi: MIN_AI_REQUEST_PRIORITY_FEE,
-    });
-    expect(req.escrowSompi).toBe(reward);
-    expect(req.escrowSequence).toBe(AI_ESCROW_CSV_BLOCKS);
-    expect(isCsvPayToPubkey(req.escrowScriptHex)).toBe(true);
-    expect(req.broadcastBody.outputs[1].script_public_key).toBe(req.escrowScriptHex);
+    // A legacy CSV-pay-to-pubkey escrow (the shape old app versions produced), owned by our key.
+    const escrowScriptHex = buildEscrowScriptHex(address);
+    expect(isCsvPayToPubkey(escrowScriptHex)).toBe(true);
 
-    // 2) After the CSV window, reclaim the escrow outpoint (req.txId : 1).
     const reclaim = signEscrowReclaim({
       escrows: [
         {
-          transactionId: req.txId,
+          transactionId: legacyTxId,
           index: 1,
           amountSompi: reward,
-          scriptPublicKey: req.escrowScriptHex,
-          sequence: req.escrowSequence,
+          scriptPublicKey: escrowScriptHex,
+          sequence: AI_ESCROW_CSV_BLOCKS,
           blockDaaScore: 100n,
         },
       ],
@@ -112,7 +100,7 @@ describe("AiRequest escrow reclaim lifecycle", () => {
     const body = reclaim.broadcastBody;
     // spends exactly the escrow outpoint
     expect(body.inputs.length).toBe(1);
-    expect(body.inputs[0].transaction_id).toBe(req.txId);
+    expect(body.inputs[0].transaction_id).toBe(legacyTxId);
     expect(body.inputs[0].index).toBe(1);
     // input sequence satisfies OP_CSV (>= the escrow's lock)
     expect(BigInt(body.inputs[0].sequence)).toBeGreaterThanOrEqual(AI_ESCROW_CSV_BLOCKS);
@@ -143,17 +131,7 @@ describe("AiRequest escrow reclaim lifecycle", () => {
 
   it("refuses when the escrow is below the network fee", () => {
     const { address, key } = wallet();
-    const scriptHex = signAiRequest({
-      utxos: [fund(address, 10)],
-      keys: [key],
-      changeAddress: address,
-      networkId: NET,
-      modelId: GLM,
-      prompt: "x",
-      maxTokens: 64,
-      rewardSompi: 55_000_000n,
-      priorityFeeSompi: MIN_AI_REQUEST_PRIORITY_FEE,
-    }).escrowScriptHex;
+    const scriptHex = buildEscrowScriptHex(address);
     expect(() =>
       signEscrowReclaim({
         escrows: [{ transactionId: "b".padEnd(64, "0"), index: 1, amountSompi: 1000n, scriptPublicKey: scriptHex, sequence: AI_ESCROW_CSV_BLOCKS, blockDaaScore: 1n }],

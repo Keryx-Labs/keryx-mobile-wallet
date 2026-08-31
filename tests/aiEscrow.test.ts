@@ -15,7 +15,7 @@ import { dirname, resolve } from "node:path";
 
 // @ts-ignore
 import * as kaspa from "../src/sdk/kaspa.js";
-import { signAiRequest, buildEscrowScriptHex } from "../src/mobile/ai/tx";
+import { signAiRequest, buildEscrowScriptHex, INFERENCE_VAULT_SCRIPT_HEX } from "../src/mobile/ai/tx";
 import { deriveKeyMap } from "../src/mobile/wallet/derivation";
 import { MIN_AI_REQUEST_PRIORITY_FEE } from "../src/mobile/ai/payload";
 import type { Utxo } from "../src/mobile/chain";
@@ -87,7 +87,7 @@ describe("AiRequest escrow output (UTXO escrow design)", () => {
     expect(escrow.endsWith(p2pk)).toBe(true);
   });
 
-  it("a signed AiRequest carries escrow output[1] >= reward, change at [0], fee covers priority_fee", () => {
+  it("a signed AiRequest carries the routed vault escrow at output[1] >= reward, change at [0], fee covers priority_fee", () => {
     const { address, key } = firstKeyAndAddress();
     const reward = 170_000_000n; // GLM base 150M + 4 token steps (256 tokens) — the effective min
     const priorityFee = MIN_AI_REQUEST_PRIORITY_FEE;
@@ -108,10 +108,10 @@ describe("AiRequest escrow output (UTXO escrow design)", () => {
     const body = signed.broadcastBody;
     // Subnetwork must be AiRequest (0300…).
     expect(body.subnetwork_id.startsWith("0300")).toBe(true);
-    // Two outputs: [0] change (p2pk), [1] escrow (CSV-p2pk) worth exactly the reward.
+    // Two outputs: [0] change (p2pk), [1] the H8 keyless reward vault worth exactly the reward.
     expect(body.outputs.length).toBe(2);
     expect(isP2pk(body.outputs[0].script_public_key)).toBe(true);
-    expect(isCsvPayToPubkey(body.outputs[1].script_public_key)).toBe(true);
+    expect(body.outputs[1].script_public_key).toBe(INFERENCE_VAULT_SCRIPT_HEX);
     expect(body.outputs[1].amount).toBe(reward);
     expect(body.outputs[1].amount >= reward).toBe(true); // consensus: escrow.value >= inference_reward
 

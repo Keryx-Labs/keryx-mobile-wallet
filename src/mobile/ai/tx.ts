@@ -31,6 +31,17 @@ const OP_CHECKSEQUENCEVERIFY = 0xb1;
 const OP_DATA_32 = 0x20;
 const OP_CHECKSIG = 0xac;
 
+// Since the H8 reward-routing hard fork, an AiRequest's escrow output[1] MUST be this canonical keyless
+// vault script — `OP_RETURN "aivault"` (keryx-node `INFERENCE_VAULT_SCRIPT`) — instead of the old
+// CSV-pay-to-pubkey. The reward locked here is minted by the coinbase to the FIRST miner that answers,
+// so it genuinely pays for the inference (it is NOT reclaimable by the requester). A CSV-p2pk escrow is
+// now rejected by consensus. Value must still be >= inference_reward.
+export const INFERENCE_VAULT_SCRIPT_HEX = "6a0761697661756c74"; // OP_RETURN <"aivault">
+
+// Mainnet DAA at which reward-routing (H8) activated. Before this, AiRequest escrows were CSV-pay-to-
+// pubkey (reclaimable by the requester); at/after it they are the keyless vault (paid to the miner).
+export const REWARD_ROUTING_ACTIVATION_DAA = 79_210_000n;
+
 // Relative-timelock (in blocks/DAA) the escrow is locked for before the requester can reclaim it.
 // Matches the protocol's escrow/challenge window (keryx-node: "escrow ... locked via CSV, 36,000
 // blocks", ~1h at 10 BPS). Consensus checks only the escrow script CLASS + value, not this lock value,
@@ -149,7 +160,8 @@ export function signAiRequest(req: AiRequestSpend): SignedAiRequest {
   }
 
   const entries = used.map(toEntry);
-  const escrowSpk = new kaspa.ScriptPublicKey(0, buildEscrowScriptHex(req.changeAddress) as any);
+  // H8 routed escrow: output[1] is the canonical keyless vault (reward paid to the answering miner).
+  const escrowSpk = new kaspa.ScriptPublicKey(0, INFERENCE_VAULT_SCRIPT_HEX as any);
 
   const build = (fee: bigint): { tx: any; change: bigint } => {
     const change = total - reward - fee;
@@ -189,8 +201,8 @@ export function signAiRequest(req: AiRequestSpend): SignedAiRequest {
     broadcastBody,
     feeSompi: fee,
     escrowSompi: reward,
-    escrowScriptHex: buildEscrowScriptHex(req.changeAddress),
-    escrowSequence: AI_ESCROW_CSV_BLOCKS,
+    escrowScriptHex: INFERENCE_VAULT_SCRIPT_HEX, // routed vault; not a reclaimable CSV escrow
+    escrowSequence: 0n, // routed reward is minted to the miner, not reclaimed by the requester
     inputCount: used.length,
     payloadHex: broadcastBody.payload,
   };

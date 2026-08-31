@@ -9,10 +9,9 @@ import type { ConsolidateInfo } from "../chain";
 export type { ConsolidateInfo } from "../chain";
 import type { SecureStore } from "../secureStore";
 import { deriveAddresses, deriveKeyMap, firstReceiveAddress } from "./derivation";
-import { signAiRequest, buildEscrowScriptHex, AI_ESCROW_CSV_BLOCKS } from "../ai/tx";
+import { signAiRequest, buildEscrowScriptHex, AI_ESCROW_CSV_BLOCKS, REWARD_ROUTING_ACTIVATION_DAA } from "../ai/tx";
 import { signEscrowReclaim, type EscrowUtxo } from "../chain";
 import {
-  addEscrow,
   listEscrows,
   removeEscrows,
   reconcileEscrows,
@@ -560,19 +559,9 @@ export class MobileWallet {
     const res = await this.chain.broadcast(signed.broadcastBody);
     if (!res.ok) throw new Error(res.error ?? "Broadcast failed.");
 
-    // Track the escrow so we can reclaim the reward after its CSV window (it isn't indexed under a
-    // normal address). Then opportunistically sweep any PREVIOUSLY-matured escrows while we still hold
-    // the mnemonic — so escrowed rewards don't pile up (best-effort; failures are retried later).
-    const owner = this.addresses.receive[0];
-    await addEscrow(owner, {
-      txid: res.transactionId || signed.txId,
-      index: 1,
-      amountSompi: signed.escrowSompi.toString(),
-      scriptHex: signed.escrowScriptHex,
-      sequence: signed.escrowSequence.toString(),
-      createdDaa: info.lastDaaScore.toString(),
-      requestHash: signed.requestHash,
-    });
+    // Since the H8 reward-routing fork the escrow is the keyless vault (reward is paid to the answering
+    // miner, NOT reclaimable), so new requests are not tracked for reclaim. We still opportunistically
+    // sweep any LEGACY (pre-H8) CSV escrows a user may still hold while we have the mnemonic.
     try {
       await this.reclaimMatured(phrase, info);
     } catch {
@@ -637,15 +626,19 @@ export class MobileWallet {
           ts: r.timestampMs || Date.now(),
           feeSompi: req.priorityFee.toString(),
         });
-        foundEscrows.push({
-          txid: r.txId,
-          index: 1,
-          amountSompi: out1.amountSompi.toString(),
-          scriptHex: escrowScript,
-          sequence: AI_ESCROW_CSV_BLOCKS.toString(),
-          createdDaa: r.blockDaaScore.toString(),
-          requestHash: hash,
-        });
+        // Only PRE-H8 escrows are the requester's reclaimable CSV-p2pk. From the reward-routing fork
+        // on, output[1] is the keyless vault (paid to the miner) — not ours — so we don't track it.
+        if (r.blockDaaScore < REWARD_ROUTING_ACTIVATION_DAA) {
+          foundEscrows.push({
+            txid: r.txId,
+            index: 1,
+            amountSompi: out1.amountSompi.toString(),
+            scriptHex: escrowScript,
+            sequence: AI_ESCROW_CSV_BLOCKS.toString(),
+            createdDaa: r.blockDaaScore.toString(),
+            requestHash: hash,
+          });
+        }
       }
 
       // 5) reconcile caches with real chain state (dedupe; drop reclaimed)
