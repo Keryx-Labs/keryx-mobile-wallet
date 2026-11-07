@@ -106,7 +106,7 @@ export interface InferenceRecord {
 }
 
 export interface ChainProvider {
-  readonly kind: "rest" | "direct";
+  readonly kind: "rest" | "direct" | "hybrid";
   getInfo(): Promise<NetworkInfo>;
   getBalanceSompi(address: string): Promise<bigint>;
   getUtxos(address: string): Promise<Utxo[]>;

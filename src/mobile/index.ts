@@ -12,7 +12,23 @@ import { PriceService } from "./price";
 import { candidateNodes, selectHealthyNode, Probe, NodeSelection } from "./nodes";
 import { DEFAULT_FLAGS, FeatureFlags, visibleSections } from "./features";
 import { openTradeKrx, DONATE_ADDRESS } from "./externalLinks";
-import { createChainProvider, ChainProvider } from "./chain";
+import { createChainProvider, ChainProvider, HybridProvider, NodeStatus } from "./chain";
+import type { NodeCandidate } from "./nodes";
+
+const CUSTOM_NODE_KEY = "keryx.mobile.customNode";
+
+function loadCustomNode(): string | null {
+  try {
+    return localStorage.getItem(CUSTOM_NODE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function withCustom(custom: string | null, defaults: NodeCandidate[]): NodeCandidate[] {
+  if (!custom) return defaults;
+  return [{ url: custom, networkId: defaults[0]?.networkId ?? "mainnet" }, ...defaults.filter((n) => n.url !== custom)];
+}
 
 export interface MobileRuntime {
   native: boolean;
@@ -24,6 +40,13 @@ export interface MobileRuntime {
   chain: ChainProvider;
   validateNode: (url: string) => ReturnType<typeof validateNodeUrl>;
   pickNode: (probe: Probe) => Promise<NodeSelection>;
+  /** Node in use by the chain provider, or null when only the gateway answers. */
+  nodeStatus: () => NodeStatus;
+  /** Probes the node list now; resolves with the resulting status. */
+  checkNode: () => Promise<NodeStatus>;
+  customNode: () => string | null;
+  /** Validates, stores and switches to a user node; `null` restores the official list. */
+  setCustomNode: (url: string | null) => { ok: boolean; error?: string };
   sections: () => ReturnType<typeof visibleSections>;
   openTrade: () => Promise<void>;
   backupSeed: () => Promise<void>;
@@ -57,8 +80,15 @@ export async function initMobile(opts: InitMobileOptions): Promise<MobileRuntime
   const price = new PriceService(native);
   if (flags.marketPrice) price.start();
 
-  const chain = createChainProvider("rest", { isNative: native, gatewayBase: opts.gatewayBase });
   const envNodes = import.meta.env.VITE_KERYX_NODES as string | undefined;
+  const defaults = candidateNodes(envNodes);
+  let custom = loadCustomNode();
+  const chain = createChainProvider("hybrid", {
+    isNative: native,
+    gatewayBase: opts.gatewayBase,
+    nodes: withCustom(custom, defaults),
+  }) as HybridProvider;
+  const validate = (url: string) => validateNodeUrl(url, { allowLoopbackWs: allowLoopbackWs() });
 
   return {
     native,
@@ -68,8 +98,28 @@ export async function initMobile(opts: InitMobileOptions): Promise<MobileRuntime
     price,
     donateAddress: DONATE_ADDRESS,
     chain,
-    validateNode: (url: string) => validateNodeUrl(url, { allowLoopbackWs: allowLoopbackWs() }),
+    validateNode: validate,
     pickNode: (probe: Probe) => selectHealthyNode(candidateNodes(envNodes), probe),
+    nodeStatus: () => chain.status(),
+    checkNode: () => chain.connect(),
+    customNode: () => custom,
+    setCustomNode: (url: string | null) => {
+      let next: string | null = null;
+      if (url && url.trim()) {
+        const v = validate(url);
+        if (!v.ok || !v.url) return { ok: false, error: v.error ?? "Invalid node address." };
+        next = v.url;
+      }
+      try {
+        if (next) localStorage.setItem(CUSTOM_NODE_KEY, next);
+        else localStorage.removeItem(CUSTOM_NODE_KEY);
+      } catch {
+        /* kept for this session only */
+      }
+      custom = next;
+      chain.setCandidates(withCustom(custom, defaults));
+      return { ok: true };
+    },
     sections: () => visibleSections(flags),
     openTrade: () => openTradeKrx(native),
     backupSeed: () => mirrorSeedToVault(store),

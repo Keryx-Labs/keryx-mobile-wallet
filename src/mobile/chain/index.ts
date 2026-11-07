@@ -5,14 +5,18 @@
 
 import type { ChainProvider } from "./types";
 import { RestGatewayProvider, DEFAULT_GATEWAY } from "./restGateway";
+import { HybridProvider } from "./hybrid";
+import type { NodeCandidate } from "../nodes";
 
-export type ProviderKind = "rest" | "direct";
+export type ProviderKind = "rest" | "direct" | "hybrid";
 
 export interface ChainProviderOptions {
   isNative: boolean;
   gatewayBase?: string;
   nodeUrl?: string;
   networkId?: string;
+  /** Nodes tried in order by the hybrid provider. */
+  nodes?: NodeCandidate[];
 }
 
 /** Reserved future provider: talks wRPC (Borsh, wss://) directly to a node. Not in the MVP. */
@@ -41,10 +45,14 @@ export function createChainProvider(
   if (kind === "direct") {
     return new DirectNodeProvider(opts.nodeUrl ?? "", opts.networkId ?? "mainnet");
   }
-  return new RestGatewayProvider(opts.isNative, opts.gatewayBase ?? DEFAULT_GATEWAY);
+  const rest = new RestGatewayProvider(opts.isNative, opts.gatewayBase ?? DEFAULT_GATEWAY);
+  if (kind === "hybrid") return new HybridProvider(rest, opts.nodes ?? []);
+  return rest;
 }
 
 export { RestGatewayProvider, DEFAULT_GATEWAY } from "./restGateway";
+export { HybridProvider } from "./hybrid";
+export type { NodeStatus } from "./hybrid";
 export { signSpend, signConsolidate, consolidateInfo, signEscrowReclaim, MAX_TX_INPUTS, KERYX_MIN_FEE, COINBASE_MATURITY } from "./signer";
 export type { SpendRequest, SignedSpend, ConsolidateRequest, ConsolidateInfo, EscrowUtxo, EscrowReclaimRequest } from "./signer";
 export { buildBroadcastBody, stringifyBroadcast, splitScriptPublicKey } from "./broadcast";

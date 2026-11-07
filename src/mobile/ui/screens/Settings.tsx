@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "../WalletProvider";
 import { Button, Card, Field, copy, shortAddr, Toast } from "../kit";
 import { RESOURCE_LINKS } from "../../externalLinks";
@@ -86,9 +86,7 @@ export function Settings() {
         </button>
         {showAdv && (
           <div className="mt-2 border-t border-keryx-border pt-3">
-            <div className="text-sm text-keryx-dim">
-              Network: connected via the Keryx public gateway. No node setup required.
-            </div>
+            <NodeSettings onSaved={flash} />
             <label className="mt-3 flex items-center justify-between border-t border-keryx-border py-2">
               <span className="text-keryx-text">I own a miner</span>
               <input
@@ -144,7 +142,7 @@ export function Settings() {
       <Card>
         <div className="mb-1 font-semibold text-keryx-error">Danger zone</div>
         <p className="text-sm text-keryx-dim">
-          Remove this wallet from the device. You can only restore it with your 24-word phrase.
+          Remove this wallet from the device. You can only restore it with your recovery phrase.
         </p>
         {!confirmWipe ? (
           <div className="mt-2">
@@ -154,7 +152,7 @@ export function Settings() {
           </div>
         ) : (
           <div className="mt-2 flex flex-col gap-2">
-            <div className="text-sm text-keryx-error">Are you sure? Make sure you have your 24 words.</div>
+            <div className="text-sm text-keryx-error">Are you sure? Make sure you have your recovery phrase.</div>
             <Button variant="danger" onClick={() => app.wipe()}>
               Yes, remove
             </Button>
@@ -166,6 +164,70 @@ export function Settings() {
       </Card>
 
       <Toast msg={toast} />
+    </div>
+  );
+}
+
+function NodeSettings({ onSaved }: { onSaved: (m: string) => void }) {
+  const app = useApp();
+  const rt = app.runtime;
+  const [draft, setDraft] = useState(rt?.customNode() ?? "");
+  const [err, setErr] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
+  const [status, setStatus] = useState(() => rt?.nodeStatus() ?? { url: null, lastError: null });
+
+  const check = async () => {
+    if (!rt) return;
+    setChecking(true);
+    setStatus(await rt.checkNode());
+    setChecking(false);
+  };
+  useEffect(() => {
+    void check();
+  }, [rt]);
+  if (!rt) return null;
+
+  const apply = (url: string | null) => {
+    const res = rt.setCustomNode(url);
+    if (!res.ok) return setErr(res.error ?? "Invalid node address.");
+    setErr(null);
+    if (!url) setDraft("");
+    onSaved(url ? "Node saved" : "Official node restored");
+    void check().then(() => app.refresh());
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="label">Node</div>
+      <div className="break-all text-sm text-keryx-text">
+        {checking ? "Checking…" : status.url ? `Connected · ${status.url}` : "Gateway only — no node reachable right now"}
+      </div>
+      {!checking && !status.url && status.lastError && (
+        <div className="break-all text-xs text-keryx-dim">{status.lastError}</div>
+      )}
+      <div className="text-xs text-keryx-dim">
+        Balance, coins and sends go to this node; history comes from the Keryx gateway. If the node does
+        not answer, the wallet uses the gateway.
+      </div>
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="wss://your-node:23110"
+        autoCapitalize="off"
+        autoCorrect="off"
+        className="input mt-1 text-sm"
+      />
+      {err && <div className="text-sm text-keryx-error">{err}</div>}
+      <div className="flex gap-2">
+        <Button className="flex-1" onClick={() => apply(draft)} disabled={!draft.trim()}>
+          Use this node
+        </Button>
+        {rt.customNode() && (
+          <Button className="flex-1" variant="ghost" onClick={() => apply(null)}>
+            Official node
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

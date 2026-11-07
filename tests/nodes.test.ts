@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { nodesFromEnv, candidateNodes, selectHealthyNode, NodeCandidate, ProbeResult } from "../src/mobile/nodes";
+import { nodesFromEnv, candidateNodes, selectHealthyNode, NodeCandidate, ProbeResult, OFFICIAL_NODES } from "../src/mobile/nodes";
 
 const N = (url: string): NodeCandidate => ({ url, networkId: "mainnet" });
 
@@ -14,7 +14,8 @@ describe("node candidates", () => {
 
   it("env overrides the in-code default list", () => {
     expect(candidateNodes("wss://x:23110").map((n) => n.url)).toEqual(["wss://x:23110"]);
-    expect(candidateNodes(undefined)).toEqual([]); // OFFICIAL_NODES empty until project fills it
+    expect(candidateNodes(undefined)).toEqual(OFFICIAL_NODES);
+    expect(OFFICIAL_NODES.every((n) => n.url.startsWith("wss://"))).toBe(true);
   });
 });
 

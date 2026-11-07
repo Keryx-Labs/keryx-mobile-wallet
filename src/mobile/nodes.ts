@@ -17,9 +17,7 @@ export interface NodeCandidate {
   networkId: string; // e.g. "mainnet"
 }
 
-// TODO(keryx): replace with the project's official public wss:// endpoints, e.g.
-//   { url: "wss://node1.keryx-labs.com:23110", networkId: "mainnet" },
-export const OFFICIAL_NODES: NodeCandidate[] = [];
+export const OFFICIAL_NODES: NodeCandidate[] = [{ url: "wss://node.keryx-labs.com:23110", networkId: "mainnet" }];
 
 const DEFAULT_PORT = "23110";
 const DEFAULT_NETWORK = "mainnet";
