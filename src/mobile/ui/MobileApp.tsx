@@ -49,18 +49,19 @@ function Shell() {
   })();
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-keryx-bg text-keryx-text">
       {screen}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-keryx-border bg-keryx-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         <div className="mx-auto flex max-w-md items-stretch justify-around">
           {sections.map((sec) => (
             <button
               key={sec.id}
               onClick={() => setTab(sec.id)}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-3 text-xs ${
-                tab === sec.id ? "text-emerald-400" : "text-slate-500"
+              className={`relative flex flex-1 flex-col items-center gap-1 py-3 text-[10px] uppercase tracking-[0.12em] ${
+                tab === sec.id ? "text-keryx-bright glow" : "text-keryx-dim"
               }`}
             >
+              {tab === sec.id && <span className="absolute inset-x-4 top-0 h-px bg-keryx-bright shadow-cta" />}
               <span className="text-lg leading-none">{ICON[sec.id]}</span>
               {sec.label}
             </button>
@@ -73,9 +74,10 @@ function Shell() {
 
 function Splash({ text, error }: { text: string; error?: boolean }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-950 p-6 text-center">
-      <div className="text-2xl font-bold text-emerald-400">Keryx Wallet</div>
-      <div className={error ? "text-red-300" : "text-slate-400"}>{text}</div>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-keryx-bg p-6 text-center">
+      <div className="glow text-2xl font-bold tracking-[0.2em] text-keryx-bright">KERYX</div>
+      <div className="label">// wallet</div>
+      <div className={error ? "text-keryx-error" : "text-keryx-dim"}>{text}</div>
     </div>
   );
 }

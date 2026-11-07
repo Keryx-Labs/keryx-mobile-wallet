@@ -31,20 +31,20 @@ export function UpdateBanner() {
   if (!info) return null;
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+    <div className="flex items-center gap-3 rounded border border-keryx-green/30 bg-keryx-green/10 px-4 py-3">
       <div className="flex-1">
-        <div className="text-sm font-medium text-emerald-300">Update available — v{info.version}</div>
-        <div className="text-xs text-slate-400">A newer version is on GitHub. Tap update to download.</div>
+        <div className="text-sm font-medium text-keryx-green">Update available — v{info.version}</div>
+        <div className="text-xs text-keryx-dim">A newer version is on GitHub. Tap update to download.</div>
       </div>
       <button
-        className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-300 active:scale-95"
+        className="rounded-full bg-keryx-green/20 px-3 py-1 text-xs font-medium text-keryx-green active:scale-95"
         onClick={() => void openExternalUrl(info.url)}
       >
         Update
       </button>
       <button
         aria-label="Dismiss"
-        className="px-1 text-slate-500 hover:text-slate-300"
+        className="px-1 text-keryx-dim hover:text-keryx-text"
         onClick={() => {
           dismissUpdate(info.version);
           setInfo(null);
@@ -87,22 +87,22 @@ export function VersionCard() {
   };
 
   return (
-    <div className="mt-3 border-t border-slate-800 pt-3">
+    <div className="mt-3 border-t border-keryx-border pt-3">
       <div className="flex items-center justify-between">
-        <div className="text-sm text-slate-400">
+        <div className="text-sm text-keryx-dim">
           Version{" "}
-          <span className="font-mono text-slate-300">{version ? `v${version}` : "—"}</span>
+          <span className="font-mono text-keryx-text">{version ? `v${version}` : "—"}</span>
         </div>
         {state === "available" && found ? (
           <button
-            className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-300"
+            className="rounded-full bg-keryx-green/20 px-3 py-1 text-xs font-medium text-keryx-green"
             onClick={() => void openExternalUrl(found.url)}
           >
             Update to v{found.version}
           </button>
         ) : (
           <button
-            className="text-xs text-emerald-400 disabled:text-slate-500"
+            className="text-xs text-keryx-green disabled:text-keryx-dim"
             onClick={() => void check()}
             disabled={state === "checking"}
           >
@@ -111,7 +111,7 @@ export function VersionCard() {
         )}
       </div>
       {state === "latest" && (
-        <div className="mt-1 text-xs text-slate-500">You're on the latest version.</div>
+        <div className="mt-1 text-xs text-keryx-dim">You're on the latest version.</div>
       )}
     </div>
   );

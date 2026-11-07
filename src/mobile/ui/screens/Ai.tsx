@@ -215,17 +215,17 @@ export function Ai() {
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4 px-4 py-5 pb-28">
-      <div className="text-lg font-semibold text-slate-100">AI Inference</div>
+      <div className="glow text-lg font-semibold text-keryx-bright">AI Inference</div>
 
       {showWarn && (
-        <div className="relative rounded-2xl bg-amber-500/10 px-4 py-3 pr-9 text-sm text-amber-300">
+        <div className="relative rounded bg-keryx-warn/10 px-4 py-3 pr-9 text-sm text-keryx-warn">
           Experimental. Each request pays real KRX: a small priority fee (~0.3 KRX) is burned, and the
           inference reward goes to the miner that answers (it is not refundable). Prompts and results are
           published to a public network — don’t include anything private.
           <button
             aria-label="Dismiss warning"
             onClick={hideWarn}
-            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-amber-300/80 hover:bg-amber-500/20"
+            className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-keryx-warn hover:bg-keryx-warn/20"
           >
             {"\u2715"}
           </button>
@@ -237,7 +237,7 @@ export function Ai() {
       {stage === "compose" && (
         <>
           <Card>
-            <div className="mb-2 font-semibold text-slate-100">Model</div>
+            <div className="mb-2 font-semibold text-keryx-ink">Model</div>
             <div className="flex flex-col gap-2">
               {models.map((m) => {
                 const on = m.id === modelId;
@@ -245,15 +245,15 @@ export function Ai() {
                   <button
                     key={m.id}
                     onClick={() => onPickModel(m.id)}
-                    className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left ${
-                      on ? "bg-emerald-500/15 ring-1 ring-emerald-500/60" : "bg-slate-800"
+                    className={`flex items-center justify-between rounded px-4 py-3 text-left ${
+                      on ? "bg-keryx-green/15 ring-1 ring-keryx-green/60" : "bg-keryx-green/[0.03]"
                     }`}
                   >
                     <div>
-                      <div className="font-medium text-slate-100">{m.name}</div>
-                      <div className="text-xs text-slate-400">{m.tier}</div>
+                      <div className="font-medium text-keryx-ink">{m.name}</div>
+                      <div className="text-xs text-keryx-dim">{m.tier}</div>
                     </div>
-                    <div className="text-right text-xs text-slate-400">
+                    <div className="text-right text-xs text-keryx-dim">
                       from {formatKrx(m.minRewardSompi)} KRX
                     </div>
                   </button>
@@ -264,18 +264,18 @@ export function Ai() {
 
           <Card>
             <label className="block">
-              <span className="mb-1.5 block text-sm text-slate-400">Prompt</span>
+              <span className="mb-1.5 block text-sm text-keryx-dim">Prompt</span>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={5}
                 placeholder="Ask the model anything…"
-                className="w-full resize-y rounded-2xl bg-slate-800 px-4 py-3 text-slate-100 outline-none ring-emerald-500/60 focus:ring-2"
+                className="border border-keryx-border w-full resize-y rounded bg-keryx-green/[0.03] px-4 py-3 text-keryx-ink outline-none ring-keryx-green/60 focus:ring-2"
               />
             </label>
 
             <button
-              className="mt-3 text-sm text-emerald-400"
+              className="mt-3 text-sm text-keryx-green"
               onClick={() => setAdvanced((v) => !v)}
             >
               {advanced ? "Hide" : "Show"} advanced (reward, length)
@@ -284,26 +284,26 @@ export function Ai() {
             {advanced && (
               <div className="mt-3 flex flex-col gap-3">
                 <label className="block">
-                  <span className="mb-1.5 block text-sm text-slate-400">Max tokens</span>
+                  <span className="mb-1.5 block text-sm text-keryx-dim">Max tokens</span>
                   <input
                     value={maxTokens}
                     inputMode="numeric"
                     onChange={(e) => setMaxTokens(e.target.value.replace(/[^\d]/g, ""))}
-                    className="w-full rounded-2xl bg-slate-800 px-4 py-3 text-slate-100 outline-none ring-emerald-500/60 focus:ring-2"
+                    className="border border-keryx-border w-full rounded bg-keryx-green/[0.03] px-4 py-3 text-keryx-ink outline-none ring-keryx-green/60 focus:ring-2"
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1.5 block text-sm text-slate-400">
+                  <span className="mb-1.5 block text-sm text-keryx-dim">
                     Inference reward (KRX) · min {formatKrx(effMinReward)}
                   </span>
                   <input
                     value={rewardKrx}
                     inputMode="decimal"
                     onChange={(e) => setRewardKrx(e.target.value.replace(/[^\d.]/g, ""))}
-                    className="w-full rounded-2xl bg-slate-800 px-4 py-3 font-mono text-slate-100 outline-none ring-emerald-500/60 focus:ring-2"
+                    className="border border-keryx-border w-full rounded bg-keryx-green/[0.03] px-4 py-3 font-mono text-keryx-ink outline-none ring-keryx-green/60 focus:ring-2"
                   />
                 </label>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-keryx-dim">
                   A {formatKrx(MIN_AI_REQUEST_PRIORITY_FEE)} KRX priority fee is added on top.
                 </div>
               </div>
@@ -312,19 +312,19 @@ export function Ai() {
 
           <Card>
             <div className="flex items-center justify-between">
-              <span className="text-slate-400">Total cost</span>
-              <span className="font-semibold text-slate-100">
+              <span className="text-keryx-dim">Total cost</span>
+              <span className="font-semibold text-keryx-ink">
                 {formatKrx(totalSompi)} KRX{totalUsd ? ` · ${totalUsd}` : ""}
               </span>
             </div>
             {!app.biometricEnabled && (
               <label className="mt-3 block">
-                <span className="mb-1.5 block text-sm text-slate-400">Password</span>
+                <span className="mb-1.5 block text-sm text-keryx-dim">Password</span>
                 <input
                   type="password"
                   value={pw}
                   onChange={(e) => setPw(e.target.value)}
-                  className="w-full rounded-2xl bg-slate-800 px-4 py-3 text-slate-100 outline-none ring-emerald-500/60 focus:ring-2"
+                  className="border border-keryx-border w-full rounded bg-keryx-green/[0.03] px-4 py-3 text-keryx-ink outline-none ring-keryx-green/60 focus:ring-2"
                 />
               </label>
             )}
@@ -341,16 +341,16 @@ export function Ai() {
               </Button>
             </div>
             {err && (
-              <div className="mt-3 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-300">{err}</div>
+              <div className="mt-3 rounded-sm bg-keryx-error/10 px-3 py-2 text-sm text-keryx-error">{err}</div>
             )}
           </Card>
 
           {history.length > 0 && (
             <Card>
               <div className="mb-2 flex items-center justify-between">
-                <span className="font-semibold text-slate-100">Recent requests</span>
+                <span className="font-semibold text-keryx-ink">Recent requests</span>
                 <button
-                  className="text-xs text-slate-500 hover:text-slate-300"
+                  className="text-xs text-keryx-dim hover:text-keryx-text"
                   onClick={() => {
                     clearAiHistory();
                     reloadHistory();
@@ -364,15 +364,15 @@ export function Ai() {
                   <button
                     key={h.txId}
                     onClick={() => openHistory(h)}
-                    className="rounded-2xl bg-slate-800 px-4 py-3 text-left hover:bg-slate-700"
+                    className="border border-keryx-border rounded bg-keryx-green/[0.03] px-4 py-3 text-left hover:border-keryx-borderHi"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <span className="truncate text-sm font-medium text-emerald-400">
+                      <span className="truncate text-sm font-medium text-keryx-green">
                         {modelById(h.modelId)?.name ?? "AI request"}
                       </span>
-                      <span className="shrink-0 text-xs text-slate-500">{timeAgo(h.ts)}</span>
+                      <span className="shrink-0 text-xs text-keryx-dim">{timeAgo(h.ts)}</span>
                     </div>
-                    <div className="mt-0.5 truncate text-sm text-slate-400">{h.prompt}</div>
+                    <div className="mt-0.5 truncate text-sm text-keryx-dim">{h.prompt}</div>
                   </button>
                 ))}
               </div>
@@ -384,19 +384,19 @@ export function Ai() {
       {stage !== "compose" && req && (
         <>
           <Card>
-            <div className="mb-1 font-semibold text-slate-100">{model.name}</div>
+            <div className="mb-1 font-semibold text-keryx-ink">{model.name}</div>
             {prompt && (
-              <div className="mb-2 whitespace-pre-wrap break-words text-sm text-slate-300">{prompt}</div>
+              <div className="mb-2 whitespace-pre-wrap break-words text-sm text-keryx-text">{prompt}</div>
             )}
-            <div className="text-sm text-slate-400">{status}</div>
+            <div className="text-sm text-keryx-dim">{status}</div>
             {stage === "submitted" && (
-              <div className="mt-3 flex items-center gap-2 text-sm text-emerald-400">
-                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+              <div className="mt-3 flex items-center gap-2 text-sm text-keryx-green">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-keryx-cta" />
                 Listening for the answer…
               </div>
             )}
             <button
-              className="mt-3 w-full text-left font-mono text-xs text-slate-400"
+              className="mt-3 w-full text-left font-mono text-xs text-keryx-dim"
               onClick={() => {
                 copy(req.txId);
                 flash("Request tx id copied");
@@ -408,10 +408,10 @@ export function Ai() {
 
           {answer != null && (
             <Card>
-              <div className="mb-2 font-semibold text-slate-100">Result</div>
-              <div className="whitespace-pre-wrap break-words text-sm text-slate-200">{answer}</div>
+              <div className="mb-2 font-semibold text-keryx-ink">Result</div>
+              <div className="whitespace-pre-wrap break-words text-sm text-keryx-ink">{answer}</div>
               <button
-                className="mt-3 text-sm text-emerald-400"
+                className="mt-3 text-sm text-keryx-green"
                 onClick={() => {
                   copy(answer);
                   flash("Result copied");

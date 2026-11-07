@@ -57,9 +57,9 @@ export function EscrowBanner() {
   };
 
   return (
-    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-      <div className="text-sm font-medium text-amber-200">Reward escrow</div>
-      <div className="mt-0.5 text-xs text-slate-400">
+    <div className="rounded border border-keryx-warn/30 bg-keryx-warn/10 px-4 py-3">
+      <div className="text-sm font-medium text-keryx-warn">Reward escrow</div>
+      <div className="mt-0.5 text-xs text-keryx-dim">
         {formatKrx(sum.totalSompi)} KRX is held from your AI requests and returns to you after its
         lock (~1h).{sum.maturedSompi > 0n ? ` ${formatKrx(sum.maturedSompi)} KRX is ready now.` : ""}
       </div>
@@ -67,7 +67,7 @@ export function EscrowBanner() {
         <button
           disabled={busy}
           onClick={onReclaim}
-          className="mt-2 rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-200 disabled:opacity-60"
+          className="mt-2 rounded-full bg-keryx-warn/20 px-3 py-1 text-xs font-medium text-keryx-warn disabled:opacity-60"
         >
           {busy ? "Reclaiming…" : `Reclaim ${formatKrx(sum.maturedSompi)} KRX`}
         </button>
@@ -79,18 +79,18 @@ export function EscrowBanner() {
             value={pw}
             onChange={(e) => setPw(e.target.value)}
             placeholder="Password"
-            className="flex-1 rounded-xl bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none ring-emerald-500/60 focus:ring-2"
+            className="border border-keryx-border flex-1 rounded-sm bg-keryx-green/[0.03] px-3 py-2 text-sm text-keryx-ink outline-none ring-keryx-green/60 focus:ring-2"
           />
           <button
             disabled={busy || !pw}
             onClick={() => void run(pw)}
-            className="rounded-xl bg-amber-500/20 px-3 text-xs font-medium text-amber-200 disabled:opacity-60"
+            className="rounded-sm bg-keryx-warn/20 px-3 text-xs font-medium text-keryx-warn disabled:opacity-60"
           >
             Reclaim
           </button>
         </div>
       )}
-      {msg && <div className="mt-1 text-xs text-slate-500">{msg}</div>}
+      {msg && <div className="mt-1 text-xs text-keryx-dim">{msg}</div>}
     </div>
   );
 }

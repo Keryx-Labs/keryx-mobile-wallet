@@ -92,8 +92,8 @@ export function Send({ onDone }: { onDone: () => void }) {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 p-5 pb-28">
       <div className="flex items-center gap-3">
-        <button onClick={onDone} aria-label="Back" className="text-xl text-slate-400">←</button>
-        <div className="text-lg font-semibold text-slate-100">Send KRX</div>
+        <button onClick={onDone} aria-label="Back" className="text-xl text-keryx-dim">←</button>
+        <div className="glow text-lg font-semibold text-keryx-bright">Send KRX</div>
       </div>
 
       {stage === "form" && (
@@ -106,16 +106,16 @@ export function Send({ onDone }: { onDone: () => void }) {
                   setErr(null);
                   setShowScanner(true);
                 }}
-                className="text-sm text-emerald-400"
+                className="text-sm text-keryx-green"
               >
                 Scan QR code
               </button>
-              <button onClick={() => setShowRecipients(true)} className="text-sm text-emerald-400">
+              <button onClick={() => setShowRecipients(true)} className="text-sm text-keryx-green">
                 Recipients
               </button>
             </div>
             <Field label="Amount (KRX)" value={amount} onChange={setAmount} placeholder="0.0" />
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-keryx-dim">
               Available: {formatKrx(app.balanceSompi)} KRX · network fee ≈ {formatKrx(MIN_FEE)} KRX
             </div>
             <Button onClick={review}>Review</Button>
@@ -125,7 +125,7 @@ export function Send({ onDone }: { onDone: () => void }) {
 
       {stage === "confirm" && (
         <Card>
-          <div className="mb-3 font-semibold text-slate-100">Confirm — this is exactly what you sign</div>
+          <div className="mb-3 font-semibold text-keryx-ink">Confirm — this is exactly what you sign</div>
           <Row k="To" v={dest} mono />
           <Row k="Amount" v={`${amount} KRX`} />
           <Row k="Network fee" v={`≈ ${formatKrx(MIN_FEE)} KRX`} />
@@ -151,8 +151,8 @@ export function Send({ onDone }: { onDone: () => void }) {
 
       {stage === "password" && (
         <Card>
-          <div className="mb-2 font-semibold text-slate-100">Enter password to sign</div>
-          <p className="mb-3 text-sm text-slate-400">
+          <div className="mb-2 font-semibold text-keryx-ink">Enter password to sign</div>
+          <p className="mb-3 text-sm text-keryx-dim">
             The transaction is signed on this device. Your password never leaves it.
           </p>
           <div className="flex flex-col gap-3">
@@ -169,15 +169,15 @@ export function Send({ onDone }: { onDone: () => void }) {
 
       {stage === "done" && (
         <Card className="text-center">
-          <div className="text-lg font-semibold text-emerald-400">Sent ✓</div>
-          <div className="mt-2 break-all font-mono text-xs text-slate-400">{txId}</div>
+          <div className="glow text-lg font-semibold text-keryx-bright">Sent ✓</div>
+          <div className="mt-2 break-all font-mono text-xs text-keryx-dim">{txId}</div>
           {!savedContact ? (
             <div className="mt-4 flex flex-col gap-2 text-left">
               <input
                 value={saveLabel}
                 onChange={(e) => setSaveLabel(e.target.value)}
                 placeholder="Label this address to save it (optional)"
-                className="w-full rounded-2xl bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none ring-emerald-500/60 focus:ring-2"
+                className="border border-keryx-border w-full rounded bg-keryx-green/[0.03] px-4 py-3 text-sm text-keryx-ink outline-none ring-keryx-green/60 focus:ring-2"
               />
               <Button
                 variant="ghost"
@@ -191,7 +191,7 @@ export function Send({ onDone }: { onDone: () => void }) {
               </Button>
             </div>
           ) : (
-            <div className="mt-3 text-sm text-emerald-400">Saved to address book</div>
+            <div className="mt-3 text-sm text-keryx-green">Saved to address book</div>
           )}
           <div className="mt-4">
             <Button onClick={onDone}>Done</Button>
@@ -199,7 +199,7 @@ export function Send({ onDone }: { onDone: () => void }) {
         </Card>
       )}
 
-      {err && <div className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-300">{err}</div>}
+      {err && <div className="rounded bg-keryx-error/10 px-4 py-3 text-sm text-keryx-error">{err}</div>}
 
       {showRecipients && (
         <Recipients
@@ -218,9 +218,9 @@ export function Send({ onDone }: { onDone: () => void }) {
 
 function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
-    <div className="flex justify-between gap-3 border-b border-slate-800 py-2 last:border-0">
-      <span className="text-slate-400">{k}</span>
-      <span className={`text-right text-slate-100 ${mono ? "break-all font-mono text-sm" : ""}`}>{v}</span>
+    <div className="flex justify-between gap-3 border-b border-keryx-border py-2 last:border-0">
+      <span className="text-keryx-dim">{k}</span>
+      <span className={`text-right text-keryx-ink ${mono ? "break-all font-mono text-sm" : ""}`}>{v}</span>
     </div>
   );
 }

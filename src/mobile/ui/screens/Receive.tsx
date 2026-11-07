@@ -11,14 +11,14 @@ export function Receive({ onBack }: { onBack?: () => void }) {
     <div className="mx-auto flex max-w-md flex-col items-center gap-4 p-5 pb-28">
       <div className="flex w-full items-center gap-3">
         {onBack && (
-          <button onClick={onBack} aria-label="Back" className="text-xl text-slate-400">←</button>
+          <button onClick={onBack} aria-label="Back" className="text-xl text-keryx-dim">←</button>
         )}
-        <div className="text-lg font-semibold text-slate-100">Receive KRX</div>
+        <div className="glow text-lg font-semibold text-keryx-bright">Receive KRX</div>
       </div>
       {addr ? (
         <Card className="flex w-full flex-col items-center gap-4">
           <Qr value={addr} />
-          <div className="break-all text-center font-mono text-sm text-slate-200">{addr}</div>
+          <div className="break-all text-center font-mono text-sm text-keryx-ink">{addr}</div>
           <Button
             onClick={() => {
               copy(addr);
@@ -28,12 +28,12 @@ export function Receive({ onBack }: { onBack?: () => void }) {
           >
             Copy address
           </Button>
-          <p className="text-center text-xs text-slate-500">
+          <p className="text-center text-xs text-keryx-dim">
             Only send KRX (Keryx main chain) to this address.
           </p>
         </Card>
       ) : (
-        <div className="text-slate-500">No address available.</div>
+        <div className="text-keryx-dim">No address available.</div>
       )}
       <Toast msg={toast} />
     </div>

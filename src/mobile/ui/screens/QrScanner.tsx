@@ -98,13 +98,13 @@ export function QrScanner({
       <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
       <canvas ref={canvasRef} className="hidden" />
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="h-60 w-60 rounded-3xl border-2 border-emerald-400/80" />
+        <div className="h-60 w-60 rounded border-2 border-keryx-green/80" />
       </div>
-      <div className="absolute inset-x-0 top-0 p-6 text-center text-sm text-white/90">
+      <div className="absolute inset-x-0 top-0 p-6 text-center text-sm text-keryx-ink">
         Scan a Keryx address QR code
       </div>
       {err && (
-        <div className="absolute inset-x-6 top-1/3 rounded-2xl bg-red-500/20 p-3 text-center text-sm text-red-100">
+        <div className="absolute inset-x-6 top-1/3 rounded bg-keryx-error/20 p-3 text-center text-sm text-keryx-error">
           {err}
         </div>
       )}

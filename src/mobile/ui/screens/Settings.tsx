@@ -36,26 +36,26 @@ export function Settings() {
 
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4 p-5 pb-28">
-      <div className="text-lg font-semibold text-slate-100">Settings</div>
+      <div className="glow text-lg font-semibold text-keryx-bright">Settings</div>
 
       <Card>
-        <div className="mb-1 font-semibold text-slate-100">Security</div>
+        <div className="mb-1 font-semibold text-keryx-ink">Security</div>
         <button
           className="flex w-full items-center justify-between py-2 text-left"
           onClick={() => app.lock()}
         >
-          <span className="text-slate-300">Lock wallet now</span>
-          <span className="text-slate-500">›</span>
+          <span className="text-keryx-text">Lock wallet now</span>
+          <span className="text-keryx-dim">›</span>
         </button>
         {!app.biometricEnabled && (
-          <div className="border-t border-slate-800 pt-2">
+          <div className="border-t border-keryx-border pt-2">
             {!showBio ? (
-              <button className="py-2 text-left text-slate-300" onClick={() => setShowBio(true)}>
+              <button className="py-2 text-left text-keryx-text" onClick={() => setShowBio(true)}>
                 Enable biometric unlock
               </button>
             ) : (
               <div className="flex flex-col gap-2 py-2">
-                <div className="text-sm text-slate-400">
+                <div className="text-sm text-keryx-dim">
                   Confirm your password, then verify with biometrics to enable.
                 </div>
                 <Field label="Password" type="password" value={bioPw} onChange={setBioPw} />
@@ -63,14 +63,14 @@ export function Settings() {
                   {bioBusy ? "Enabling…" : "Enable"}
                 </Button>
                 {bioErr && (
-                  <div className="rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-300">{bioErr}</div>
+                  <div className="rounded-sm bg-keryx-error/10 px-3 py-2 text-sm text-keryx-error">{bioErr}</div>
                 )}
               </div>
             )}
           </div>
         )}
         {app.biometricEnabled && (
-          <div className="border-t border-slate-800 py-2 text-sm text-emerald-400">
+          <div className="border-t border-keryx-border py-2 text-sm text-keryx-green">
             Biometric unlock enabled
           </div>
         )}
@@ -81,24 +81,24 @@ export function Settings() {
           className="flex w-full items-center justify-between text-left"
           onClick={() => setShowAdv((v) => !v)}
         >
-          <span className="font-semibold text-slate-100">Advanced</span>
-          <span className="text-slate-500">{showAdv ? "▾" : "›"}</span>
+          <span className="font-semibold text-keryx-ink">Advanced</span>
+          <span className="text-keryx-dim">{showAdv ? "▾" : "›"}</span>
         </button>
         {showAdv && (
-          <div className="mt-2 border-t border-slate-800 pt-3">
-            <div className="text-sm text-slate-400">
+          <div className="mt-2 border-t border-keryx-border pt-3">
+            <div className="text-sm text-keryx-dim">
               Network: connected via the Keryx public gateway. No node setup required.
             </div>
-            <label className="mt-3 flex items-center justify-between border-t border-slate-800 py-2">
-              <span className="text-slate-300">I own a miner</span>
+            <label className="mt-3 flex items-center justify-between border-t border-keryx-border py-2">
+              <span className="text-keryx-text">I own a miner</span>
               <input
                 type="checkbox"
                 checked={app.minerMode}
                 onChange={(e) => app.setMinerMode(e.target.checked)}
-                className="h-5 w-5 accent-emerald-500"
+                className="h-5 w-5 accent-[#2ee358]"
               />
             </label>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-keryx-dim">
               Adds a subtle Consolidate action on the wallet screen to combine many small mining payouts.
             </div>
           </div>
@@ -106,7 +106,7 @@ export function Settings() {
       </Card>
 
       <Card>
-        <div className="mb-2 font-semibold text-slate-100">Community &amp; resources</div>
+        <div className="mb-2 font-semibold text-keryx-ink">Community &amp; resources</div>
         <div className="flex flex-wrap gap-3">
           {RESOURCE_LINKS.map((r) => (
             <button
@@ -114,7 +114,7 @@ export function Settings() {
               onClick={() => app.openLink(r.url)}
               aria-label={r.label}
               title={r.label}
-              className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-emerald-400"
+              className="border border-keryx-border flex h-11 w-11 items-center justify-center rounded bg-keryx-green/[0.03] text-keryx-text hover:border-keryx-borderHi hover:text-keryx-green"
             >
               <ResIcon kind={r.kind} />
             </button>
@@ -123,13 +123,13 @@ export function Settings() {
       </Card>
 
       <Card>
-        <div className="mb-1 font-semibold text-slate-100">About · Support development</div>
-        <p className="text-sm text-slate-400">
+        <div className="mb-1 font-semibold text-keryx-ink">About · Support development</div>
+        <p className="text-sm text-keryx-dim">
           Keryx Wallet is free and open source. Donations are optional and appreciated.
         </p>
         {app.donateAddress && (
           <button
-            className="mt-2 w-full text-left font-mono text-xs text-slate-300"
+            className="mt-2 w-full text-left font-mono text-xs text-keryx-text"
             onClick={() => {
               copy(app.donateAddress);
               flash("Donate address copied");
@@ -142,8 +142,8 @@ export function Settings() {
       </Card>
 
       <Card>
-        <div className="mb-1 font-semibold text-red-300">Danger zone</div>
-        <p className="text-sm text-slate-400">
+        <div className="mb-1 font-semibold text-keryx-error">Danger zone</div>
+        <p className="text-sm text-keryx-dim">
           Remove this wallet from the device. You can only restore it with your 24-word phrase.
         </p>
         {!confirmWipe ? (
@@ -154,7 +154,7 @@ export function Settings() {
           </div>
         ) : (
           <div className="mt-2 flex flex-col gap-2">
-            <div className="text-sm text-red-300">Are you sure? Make sure you have your 24 words.</div>
+            <div className="text-sm text-keryx-error">Are you sure? Make sure you have your 24 words.</div>
             <Button variant="danger" onClick={() => app.wipe()}>
               Yes, remove
             </Button>

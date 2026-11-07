@@ -58,44 +58,44 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-md rounded-3xl bg-slate-900 p-5">
+      <div className="border border-keryx-border w-full max-w-md rounded bg-keryx-surface p-5">
         <div className="mb-4 flex items-center justify-between">
-          <div className="text-lg font-semibold text-emerald-400">Consolidate coins</div>
-          <button className="text-sm text-slate-400" onClick={onClose}>
+          <div className="glow text-lg font-semibold text-keryx-bright">Consolidate coins</div>
+          <button className="text-sm text-keryx-dim" onClick={onClose}>
             Close
           </button>
         </div>
 
-        <Card className="mb-4 bg-slate-800/60">
+        <Card className="border border-keryx-border mb-4 bg-keryx-green/[0.03]">
           {loading ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <div className="h-3 w-28 animate-pulse rounded bg-slate-700" />
-                <div className="h-3 w-10 animate-pulse rounded bg-slate-700" />
+                <div className="h-3 w-28 animate-pulse rounded bg-keryx-border" />
+                <div className="h-3 w-10 animate-pulse rounded bg-keryx-border" />
               </div>
               <div className="flex items-center justify-between">
-                <div className="h-3 w-14 animate-pulse rounded bg-slate-700" />
-                <div className="h-3 w-24 animate-pulse rounded bg-slate-700" />
+                <div className="h-3 w-14 animate-pulse rounded bg-keryx-border" />
+                <div className="h-3 w-24 animate-pulse rounded bg-keryx-border" />
               </div>
-              <div className="mt-1 flex items-center gap-2 text-xs text-emerald-400">
-                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+              <div className="mt-1 flex items-center gap-2 text-xs text-keryx-green">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-keryx-cta" />
                 Checking your coins…
               </div>
             </div>
           ) : (
             <>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">Coins (UTXOs)</span>
-                <span className="font-mono text-emerald-400">{info?.matureCount ?? 0}</span>
+                <span className="text-keryx-dim">Coins (UTXOs)</span>
+                <span className="font-mono text-keryx-green">{info?.matureCount ?? 0}</span>
               </div>
               {info && (
                 <>
-                  <div className="mt-1 flex items-center justify-between text-xs text-slate-500">
+                  <div className="mt-1 flex items-center justify-between text-xs text-keryx-dim">
                     <span>Total</span>
                     <span className="font-mono">{formatKrx(info.totalMatureSompi)} KRX</span>
                   </div>
                   {info.immatureCount > 0 && (
-                    <div className="mt-1 text-xs text-slate-500">
+                    <div className="mt-1 text-xs text-keryx-dim">
                       {info.immatureCount} mining coin{info.immatureCount === 1 ? "" : "s"} still maturing —
                       will be included on a later run.
                     </div>
@@ -108,7 +108,7 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
 
         {!result ? (
           <>
-            <p className="mb-4 text-sm text-slate-400">
+            <p className="mb-4 text-sm text-keryx-dim">
               Combines your many small coins into one by sending them back to your own address. Handy
               if you receive lots of small mining payouts. Only the network fee is spent — your balance
               stays yours. One tap consolidates your whole eligible set automatically, one confirmed
@@ -116,17 +116,17 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
             </p>
             {!app.biometricEnabled && (
               <label className="mb-3 block">
-                <span className="mb-1.5 block text-sm text-slate-400">Confirm with your password</span>
+                <span className="mb-1.5 block text-sm text-keryx-dim">Confirm with your password</span>
                 <input
                   type="password"
                   value={pw}
                   onChange={(e) => setPw(e.target.value)}
-                  className="w-full rounded-2xl bg-slate-800 px-4 py-3 text-slate-100 outline-none ring-emerald-500/60 focus:ring-2"
+                  className="border border-keryx-border w-full rounded bg-keryx-green/[0.03] px-4 py-3 text-keryx-ink outline-none ring-keryx-green/60 focus:ring-2"
                 />
               </label>
             )}
             {err && (
-              <div className="mb-3 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-300">{err}</div>
+              <div className="mb-3 rounded-sm bg-keryx-error/10 px-3 py-2 text-sm text-keryx-error">{err}</div>
             )}
             <div className="flex gap-2">
               <Button variant="ghost" className="flex-1" onClick={onClose} disabled={busy}>
@@ -149,8 +149,8 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <div className="text-center">
-            <div className="mb-2 text-lg font-semibold text-emerald-400">Submitted ✓</div>
-            <p className="mb-3 text-sm text-slate-400">
+            <div className="glow mb-2 text-lg font-semibold text-keryx-bright">Submitted ✓</div>
+            <p className="mb-3 text-sm text-keryx-dim">
               Swept {result.totalInputs.toLocaleString()} coins in {result.batches} batch
               {result.batches === 1 ? "" : "es"} (total fee {formatKrx(result.totalFeeSompi)} KRX).{" "}
               {result.remaining > 1
@@ -159,7 +159,7 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
             </p>
             {result.txids.length > 0 && (
               <button
-                className="mb-4 block w-full break-all rounded-lg bg-slate-800 p-2 text-xs text-emerald-400/80"
+                className="border border-keryx-border mb-4 block w-full break-all rounded-lg bg-keryx-green/[0.03] p-2 text-xs text-keryx-green/80"
                 onClick={() => {
                   copy(result.txids.join("\n"));
                   setToast(result.txids.length === 1 ? "Tx id copied" : "Tx ids copied");

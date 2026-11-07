@@ -43,8 +43,8 @@ export function Unlock() {
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-5 p-6">
       <div className="text-center">
-        <div className="text-2xl font-bold text-emerald-400">Welcome back</div>
-        <div className="mt-1 text-slate-400">Unlock to continue</div>
+        <div className="glow text-2xl font-bold text-keryx-bright">Welcome back</div>
+        <div className="mt-1 text-keryx-dim">Unlock to continue</div>
       </div>
       <Card>
         <div className="flex flex-col gap-3">
@@ -59,7 +59,7 @@ export function Unlock() {
           )}
         </div>
       </Card>
-      {err && <div className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-300">{err}</div>}
+      {err && <div className="rounded bg-keryx-error/10 px-4 py-3 text-sm text-keryx-error">{err}</div>}
     </div>
   );
 }

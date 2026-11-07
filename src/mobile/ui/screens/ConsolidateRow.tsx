@@ -102,25 +102,25 @@ export function ConsolidateRow({ onOpenModal }: { onOpenModal: () => void }) {
   const Pill = () => {
     if (status === "working")
       return (
-        <span className="inline-flex items-center gap-2 rounded-full bg-slate-700/60 px-3 py-1 text-xs text-slate-400">
-          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+        <span className="inline-flex items-center gap-2 rounded-full bg-keryx-border/60 px-3 py-1 text-xs text-keryx-dim">
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-keryx-cta" />
           {msg || "Preparing…"}
         </span>
       );
     if (status === "done")
       return (
-        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-400">{msg}</span>
+        <span className="rounded-full bg-keryx-green/15 px-3 py-1 text-xs text-keryx-green">{msg}</span>
       );
     if (status === "error")
-      return <span className="rounded-full bg-red-500/15 px-3 py-1 text-xs text-red-300">{msg}</span>;
+      return <span className="rounded-full bg-keryx-error/15 px-3 py-1 text-xs text-keryx-error">{msg}</span>;
     if (app.resumableConsolidation)
       return (
-        <span className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300">
+        <span className="rounded-full bg-keryx-warn/20 px-3 py-1 text-xs font-medium text-keryx-warn">
           Resume
         </span>
       );
     return (
-      <span className="rounded-full bg-slate-700/60 px-3 py-1 font-mono text-xs text-slate-400">
+      <span className="rounded-full bg-keryx-border/60 px-3 py-1 font-mono text-xs text-keryx-dim">
         {count == null ? "…" : `${count.toLocaleString()} UTXOs`}
       </span>
     );
@@ -129,10 +129,10 @@ export function ConsolidateRow({ onOpenModal }: { onOpenModal: () => void }) {
   return (
     <button
       onClick={onTap}
-      className="flex items-center gap-3 rounded-2xl bg-slate-900/70 px-4 py-3 text-left active:scale-[0.99] hover:bg-slate-800/70"
+      className="border border-keryx-border flex items-center gap-3 rounded bg-keryx-surface px-4 py-3 text-left active:scale-[0.99] hover:border-keryx-borderHi"
     >
-      <span className="text-sm font-medium text-emerald-400">Consolidate</span>
-      <span className="text-emerald-400">
+      <span className="text-sm font-medium text-keryx-green">Consolidate</span>
+      <span className="text-keryx-green">
         <MergeIcon />
       </span>
       <span className="flex-1" />
