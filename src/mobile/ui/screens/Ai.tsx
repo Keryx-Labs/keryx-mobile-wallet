@@ -16,6 +16,9 @@ import { loadWebMode, saveWebMode, type WebMode } from "../../ai/webSearch";
 
 type Stage = "compose" | "submitted" | "answered";
 
+// The open conversation, kept across tab switches (the screen unmounts) for this app session.
+let openTx: string | null = null;
+
 const POLL_MS = 4_000;
 const PROVIDERS_REFRESH_MS = 60_000;
 // After the first answer opens, how long the other miners get before the majority is picked.
@@ -343,6 +346,19 @@ export function Ai() {
     setStatus(isLocked(h) ? "Restored from the chain. Unlock your requests to read it." : "Loading result…");
     setStage("submitted");
   };
+
+  const reopen = useRef(openTx);
+  useEffect(() => {
+    openTx = stage !== "compose" && active ? active.txId : null;
+  }, [stage, active]);
+
+  useEffect(() => {
+    if (!reopen.current || history.length === 0) return;
+    const h = history.find((e) => e.txId === reopen.current);
+    reopen.current = null;
+    if (h) openHistory(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history]);
 
   const unlock = async () => {
     setErr(null);
