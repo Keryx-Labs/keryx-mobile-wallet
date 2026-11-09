@@ -32,6 +32,7 @@ import {
 import { keySchedule2ActivationDaa } from "../ai/gates";
 import { MIN_AI_REQUEST_PRIORITY_FEE, aiRequestHashOfPayload } from "../ai/payload";
 import { openAnswers, type OpenedAnswer } from "../ai/answers";
+import { questionOfPrompt } from "../ai/prompt";
 import { signEscrowReclaim, type EscrowUtxo } from "../chain";
 import {
   listEscrows,
@@ -829,7 +830,7 @@ export class MobileWallet {
       if (!prompt) {
         try {
           const tx = await this.chain.getRichTransaction(e.txId);
-          prompt = openOwnPrompt(secret, hexToBytes(tx.payloadHex));
+          prompt = questionOfPrompt(openOwnPrompt(secret, hexToBytes(tx.payloadHex)));
         } catch {
           /* keep the entry; the answer can still be opened */
         }

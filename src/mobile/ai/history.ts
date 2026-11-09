@@ -26,6 +26,10 @@ export interface AiHistoryEntry {
   recipients?: number;
   answer?: string;
   responder?: string;
+  /** Thread this message belongs to (the first message's tx id). */
+  conversationId?: string;
+  maxTokens?: number;
+  sources?: { title: string; url: string }[];
 }
 
 interface RawStore {

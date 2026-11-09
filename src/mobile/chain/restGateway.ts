@@ -35,7 +35,7 @@ function toBig(v: unknown): bigint {
   return 0n;
 }
 
-async function httpGetJson(url: string, isNative: boolean): Promise<any> {
+export async function httpGetJson(url: string, isNative: boolean): Promise<any> {
   if (isNative) {
     const { CapacitorHttp } = await import("@capacitor/core");
     const res = await CapacitorHttp.get({ url, headers: { Accept: "application/json" } });

@@ -9,6 +9,9 @@ import { ensureNotifPermission, notifyAiAnswer } from "../../notifications";
 import { loadAiHistory, clearAiHistory, updateAiHistory, type AiHistoryEntry } from "../../ai/history";
 import { majorityAnswer } from "../../ai/answers";
 import type { AiProviders } from "../../chain";
+import { buildChatPrompt, looksTruncated, normalizeTicker, type Exchange } from "../../ai/prompt";
+import { gatewayFactsApi, toFactsProviders } from "../../ai/factsApi";
+import { loadWebMode, saveWebMode, type WebMode } from "../../ai/webSearch";
 
 type Stage = "compose" | "submitted" | "answered";
 
@@ -26,7 +29,8 @@ const CONTEXT_TOKENS = 32_768;
 const FLAT_CAP_TOKENS = 2_048;
 const CONTEXT_MARGIN_TOKENS = 512;
 const BYTES_PER_TOKEN = 3;
-const PROMPT_BUDGET_BYTES = (CONTEXT_TOKENS - FLAT_CAP_TOKENS - CONTEXT_MARGIN_TOKENS) * BYTES_PER_TOKEN - 1_024;
+const PROMPT_BUDGET_BYTES = (CONTEXT_TOKENS - FLAT_CAP_TOKENS - CONTEXT_MARGIN_TOKENS) * BYTES_PER_TOKEN;
+const QUESTION_MAX_BYTES = PROMPT_BUDGET_BYTES - 1_024;
 
 const byteLength = (s: string) => new TextEncoder().encode(s).length;
 const maxTokensFor = (promptBytes: number) =>
@@ -49,12 +53,33 @@ function minersFor(providers: AiProviders | null, modelId: string): number | nul
 }
 
 const isLocked = (h: AiHistoryEntry) => !!h.seedHex && !h.secretHex;
+const threadOf = (h: AiHistoryEntry) => h.conversationId ?? h.txId;
+
+/** Messages of one conversation, oldest first. */
+function threadMessages(all: AiHistoryEntry[], conversationId: string): AiHistoryEntry[] {
+  return all.filter((e) => threadOf(e) === conversationId).sort((a, b) => a.ts - b.ts);
+}
+
+/** One row per conversation for the history list: its latest message. */
+function latestPerThread(all: AiHistoryEntry[]): AiHistoryEntry[] {
+  const seen = new Set<string>();
+  return [...all]
+    .sort((a, b) => b.ts - a.ts)
+    .filter((e) => (seen.has(threadOf(e)) ? false : (seen.add(threadOf(e)), true)));
+}
 
 export function Ai() {
   const app = useApp();
   const [modelId, setModelId] = useState(AI_MODELS[1].id);
   const modelChosen = useRef(false);
   const [prompt, setPrompt] = useState("");
+  const [followUp, setFollowUp] = useState("");
+  const [webMode, setWebModeState] = useState<WebMode>(() => loadWebMode());
+  const setWebMode = (m: WebMode) => {
+    setWebModeState(m);
+    saveWebMode(m);
+  };
+  const facts = useRef(gatewayFactsApi(app.runtime?.native ?? false));
 
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
@@ -117,9 +142,11 @@ export function Ai() {
   const model = models.find((m) => m.id === modelId) ?? models[0] ?? AI_MODELS[0];
   const miners = minersFor(providers, model.id);
   const promptBytes = byteLength(prompt);
-  const tooLong = promptBytes > PROMPT_BUDGET_BYTES;
+  const tooLong = promptBytes > QUESTION_MAX_BYTES;
   const totalSompi = model.flatRewardSompi + MIN_AI_REQUEST_PRIORITY_FEE;
   const totalUsd = app.usd(krxNumber(totalSompi));
+  const totalSompiFor = (id: string) =>
+    (models.find((m) => m.id === id)?.flatRewardSompi ?? model.flatRewardSompi) + MIN_AI_REQUEST_PRIORITY_FEE;
 
   const [showWarn, setShowWarn] = useState<boolean>(() => {
     try {
@@ -146,41 +173,76 @@ export function Ai() {
     setModelId(id);
   };
 
-  const submit = async () => {
+  /** Sends `draft` as a new conversation, a follow-up in `thread`, or the Continue of its last answer. */
+  const sendMessage = async (opts: { draft: string; thread?: AiHistoryEntry[]; continuing?: boolean; onSent?: () => void }) => {
     setErr(null);
-    const text = prompt.trim();
-    if (!text) return setErr("Enter a prompt.");
-    if (tooLong) return setErr(`This message is too long for ${model.name}: ${promptBytes} bytes, about ${PROMPT_BUDGET_BYTES} fit.`);
-    if (miners === 0) return setErr(`No miner is serving ${model.name} right now. Nothing has been sent.`);
+    const thread = opts.thread ?? [];
+    const last = thread[thread.length - 1];
+    const msgModel = last ? models.find((m) => m.id === last.modelId) ?? model : model;
+    const text = opts.draft.trim();
+    if (!opts.continuing && !text) return setErr("Enter a prompt.");
+    if (byteLength(text) > QUESTION_MAX_BYTES)
+      return setErr(`This message is too long for ${msgModel.name}: ${byteLength(text)} bytes, about ${QUESTION_MAX_BYTES} fit.`);
+    if (minersFor(providers, msgModel.id) === 0) return setErr(`No miner is serving ${msgModel.name} right now. Nothing has been sent.`);
     setBusy(true);
     try {
-      const params = { modelId: model.id, prompt: text, maxTokens: maxTokensFor(byteLength(text)), rewardSompi: model.flatRewardSompi };
+      const history: Exchange[] = thread
+        .filter((e) => e.answer && !isLocked(e))
+        .map((e) => ({ question: e.prompt, answer: e.answer as string }));
+      setStatus(webMode !== "off" ? "Preparing the request…" : "");
+      const built = await buildChatPrompt({
+        draft: text,
+        history,
+        continuing: opts.continuing,
+        budgetBytes: PROMPT_BUDGET_BYTES,
+        webMode,
+        threadOnWeb: !!last?.sources?.length,
+        lastQuestion: last?.prompt,
+        facts: facts.current,
+        providers: toFactsProviders(providers),
+      });
+      if (built.webError) setErr(`Web search skipped: ${built.webError}`);
+      const maxTokens = maxTokensFor(byteLength(built.prompt));
+      const params = { modelId: msgModel.id, prompt: built.prompt, maxTokens, rewardSompi: msgModel.flatRewardSompi };
       const r = app.biometricEnabled ? await app.submitAiWithBiometric(params) : await app.submitAi(pw, params);
       setPw("");
       const entry: AiHistoryEntry = {
         txId: r.txId,
         requestHash: r.requestHash,
-        modelId: model.id,
-        prompt: text,
+        modelId: msgModel.id,
+        prompt: built.question,
         ts: Date.now(),
         feeSompi: r.feeSompi.toString(),
         seedHex: r.seedHex,
         secretHex: r.secretHex,
         recipients: r.recipients,
+        conversationId: last ? threadOf(last) : r.txId,
+        maxTokens,
+        sources: built.sources,
       };
+      updateAiHistory(app.receiveAddress, r.txId, {
+        prompt: entry.prompt,
+        conversationId: entry.conversationId,
+        maxTokens,
+        sources: built.sources,
+      });
       setActive(entry);
       firstAnswerAt.current = null;
       setAnswer(null);
       setStatus(`Request sealed to ${r.recipients} miner${r.recipients === 1 ? "" : "s"} and sent. Waiting for an answer…`);
       setStage("submitted");
+      opts.onSent?.();
       void ensureNotifPermission(app.runtime?.native ?? false);
       reloadHistory();
     } catch (e) {
+      setStatus("");
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   };
+
+  const submit = () => sendMessage({ draft: prompt, onSent: () => setPrompt("") });
 
   const finish = useCallback(
     (entry: AiHistoryEntry, text: string, patch: Partial<AiHistoryEntry>) => {
@@ -394,9 +456,29 @@ export function Ai() {
             </label>
             {tooLong && (
               <div className="mt-2 text-xs text-keryx-error">
-                {promptBytes} bytes: too long for this model (about {PROMPT_BUDGET_BYTES} fit).
+                {promptBytes} bytes: too long for this model (about {QUESTION_MAX_BYTES} fit).
               </div>
             )}
+          </Card>
+
+          <Card>
+            <div className="mb-2 text-sm text-keryx-dim">Web search</div>
+            <div className="flex gap-2">
+              {(["auto", "on", "off"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setWebMode(m)}
+                  className={`flex-1 rounded px-3 py-2 text-sm ${
+                    webMode === m ? "bg-keryx-green/15 text-keryx-ink ring-1 ring-keryx-green/60" : "bg-keryx-green/[0.03] text-keryx-dim"
+                  }`}
+                >
+                  {m === "auto" ? "Auto" : m === "on" ? "Always" : "Off"}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 text-xs text-keryx-dim">
+              The search query goes to the Keryx relay in clear; the request itself stays sealed.
+            </div>
           </Card>
 
           <Card>
@@ -443,7 +525,7 @@ export function Ai() {
                 </button>
               </div>
               <div className="flex flex-col gap-2">
-                {history.map((h) => (
+                {latestPerThread(history).map((h) => (
                   <button
                     key={h.txId}
                     onClick={() => openHistory(h)}
@@ -468,6 +550,18 @@ export function Ai() {
 
       {stage !== "compose" && active && (
         <>
+          {threadMessages(history, threadOf(active))
+            .filter((e) => e.txId !== active.txId && e.ts < active.ts)
+            .map((e) => (
+              <Card key={e.txId}>
+                <div className="whitespace-pre-wrap break-words text-sm text-keryx-text">{isLocked(e) ? "Locked request" : e.prompt}</div>
+                {e.answer && (
+                  <div className="mt-2 whitespace-pre-wrap break-words border-t border-keryx-border pt-2 text-sm text-keryx-ink">
+                    {normalizeTicker(e.answer)}
+                  </div>
+                )}
+              </Card>
+            ))}
           <Card>
             <div className="mb-1 font-semibold text-keryx-ink">{modelById(active.modelId)?.name ?? model.name}</div>
             {active.prompt && (
@@ -496,16 +590,68 @@ export function Ai() {
           {answer != null && (
             <Card>
               <div className="mb-2 font-semibold text-keryx-ink">Answer</div>
-              <div className="whitespace-pre-wrap break-words text-sm text-keryx-ink">{answer}</div>
-              <button
-                className="mt-3 text-sm text-keryx-green"
-                onClick={() => {
-                  copy(answer);
-                  flash("Answer copied");
-                }}
-              >
-                Copy answer
-              </button>
+              <div className="whitespace-pre-wrap break-words text-sm text-keryx-ink">{normalizeTicker(answer)}</div>
+              {active.sources && active.sources.length > 0 && (
+                <div className="mt-3 flex flex-col gap-1 text-xs text-keryx-dim">
+                  <span>Sources</span>
+                  {active.sources.map((src, i) => (
+                    <button key={src.url} className="truncate text-left text-keryx-green" onClick={() => app.openLink(src.url)}>
+                      [{i + 1}] {src.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="mt-3 flex gap-4">
+                <button
+                  className="text-sm text-keryx-green"
+                  onClick={() => {
+                    copy(normalizeTicker(answer));
+                    flash("Answer copied");
+                  }}
+                >
+                  Copy answer
+                </button>
+                {looksTruncated(answer, active.maxTokens ?? 2_048) && (
+                  <button
+                    className="text-sm text-keryx-green"
+                    disabled={busy}
+                    onClick={() => sendMessage({ draft: "", thread: threadMessages(history, threadOf(active)), continuing: true })}
+                  >
+                    Continue
+                  </button>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {stage === "answered" && (
+            <Card>
+              <label className="block">
+                <span className="mb-1.5 block text-sm text-keryx-dim">Follow up</span>
+                <textarea
+                  value={followUp}
+                  onChange={(e) => setFollowUp(e.target.value)}
+                  rows={3}
+                  placeholder="Ask a follow-up question…"
+                  className={`${inputClass} resize-y`}
+                />
+              </label>
+              <div className="mt-1 text-xs text-keryx-dim">
+                Earlier messages of this conversation are sent along, sealed. {formatKrx(totalSompiFor(active.modelId))} KRX.
+              </div>
+              {!app.biometricEnabled && (
+                <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Password" className={`${inputClass} mt-3`} />
+              )}
+              <div className="mt-3">
+                <Button
+                  onClick={() =>
+                    sendMessage({ draft: followUp, thread: threadMessages(history, threadOf(active)), onSent: () => setFollowUp("") })
+                  }
+                  disabled={busy || !followUp.trim() || (!app.biometricEnabled && pw.length === 0)}
+                >
+                  {busy ? "Sealing and sending…" : "Send"}
+                </Button>
+              </div>
             </Card>
           )}
 
