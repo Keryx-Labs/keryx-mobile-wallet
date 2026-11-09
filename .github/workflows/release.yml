@@ -40,6 +40,8 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install deps
         run: npm install --no-audit --no-fund
