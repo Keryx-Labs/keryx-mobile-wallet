@@ -82,7 +82,6 @@ export function Ai() {
   };
   const facts = useRef(gatewayFactsApi(app.runtime?.native ?? false));
 
-  const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -100,7 +99,6 @@ export function Ai() {
     reloadHistory();
   }, [reloadHistory]);
   const lockedCount = history.filter(isLocked).length;
-  const [unlockPw, setUnlockPw] = useState("");
 
   const [models, setModels] = useState<AiModel[]>(AI_MODELS);
   useEffect(() => {
@@ -205,8 +203,7 @@ export function Ai() {
       if (built.webError) setErr(`Web search skipped: ${built.webError}`);
       const maxTokens = maxTokensFor(byteLength(built.prompt));
       const params = { modelId: msgModel.id, prompt: built.prompt, maxTokens, rewardSompi: msgModel.flatRewardSompi };
-      const r = app.biometricEnabled ? await app.submitAiWithBiometric(params) : await app.submitAi(pw, params);
-      setPw("");
+      const r = await app.submitAi("", params);
       const entry: AiHistoryEntry = {
         txId: r.txId,
         requestHash: r.requestHash,
@@ -351,8 +348,7 @@ export function Ai() {
     setErr(null);
     setBusy(true);
     try {
-      const n = app.biometricEnabled ? await app.unlockAiHistoryWithBiometric() : await app.unlockAiHistory(unlockPw);
-      setUnlockPw("");
+      const n = await app.unlockAiHistory("");
       reloadHistory();
       const fresh = active ? loadAiHistory(app.receiveAddress).find((e) => e.txId === active.txId) : undefined;
       if (fresh) setActive(fresh);
@@ -385,12 +381,9 @@ export function Ai() {
         {lockedCount} request{lockedCount === 1 ? " was" : "s were"} restored from the chain. Unlock to read the prompts and
         answers on this device.
       </div>
-      {!app.biometricEnabled && (
-        <input type="password" value={unlockPw} onChange={(e) => setUnlockPw(e.target.value)} placeholder="Password" className={`${inputClass} mt-3`} />
-      )}
       <div className="mt-3">
-        <Button onClick={unlock} disabled={busy || (!app.biometricEnabled && unlockPw.length === 0)}>
-          {busy ? "Unlocking…" : app.biometricEnabled ? "Unlock with fingerprint / face" : "Unlock"}
+        <Button onClick={unlock} disabled={busy}>
+          {busy ? "Unlocking…" : "Unlock"}
         </Button>
       </div>
     </Card>
@@ -494,18 +487,12 @@ export function Ai() {
             <div className="mt-1 text-xs text-keryx-dim">
               {formatKrx(model.flatRewardSompi)} KRX to the miner + {formatKrx(MIN_AI_REQUEST_PRIORITY_FEE)} KRX priority fee
             </div>
-            {!app.biometricEnabled && (
-              <label className="mt-3 block">
-                <span className="mb-1.5 block text-sm text-keryx-dim">Password</span>
-                <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} className={inputClass} />
-              </label>
-            )}
             <div className="mt-3">
               <Button
                 onClick={submit}
-                disabled={busy || !prompt.trim() || tooLong || miners === 0 || (!app.biometricEnabled && pw.length === 0)}
+                disabled={busy || !prompt.trim() || tooLong || miners === 0}
               >
-                {busy ? "Sealing and sending…" : app.biometricEnabled ? "Confirm with fingerprint / face" : "Send request"}
+                {busy ? "Sealing and sending…" : "Send request"}
               </Button>
             </div>
             {err && <div className="mt-3 rounded-sm bg-keryx-error/10 px-3 py-2 text-sm text-keryx-error">{err}</div>}
@@ -642,15 +629,12 @@ export function Ai() {
               <div className="mt-1 text-xs text-keryx-dim">
                 Earlier messages of this conversation are sent along, sealed. {formatKrx(totalSompiFor(active.modelId))} KRX.
               </div>
-              {!app.biometricEnabled && (
-                <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Password" className={`${inputClass} mt-3`} />
-              )}
               <div className="mt-3">
                 <Button
                   onClick={() =>
                     sendMessage({ draft: followUp, thread: threadMessages(history, threadOf(active)), onSent: () => setFollowUp("") })
                   }
-                  disabled={busy || !followUp.trim() || (!app.biometricEnabled && pw.length === 0)}
+                  disabled={busy || !followUp.trim()}
                 >
                   {busy ? "Sealing and sending…" : "Send"}
                 </Button>

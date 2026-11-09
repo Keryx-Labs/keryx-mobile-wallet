@@ -156,6 +156,8 @@ async function pmap<T, R>(
 export class MobileWallet {
   private networkId: string;
   private scanWindow: number;
+  // Recovery phrase of the unlocked wallet, in memory only; cleared by lock() (manual or auto-lock).
+  private sessionPhrase: string | null = null;
   private addresses: { receive: string[]; change: string[] } | null = null;
 
   constructor(
@@ -205,15 +207,25 @@ export class MobileWallet {
       /* non-fatal */
     }
     this.addresses = deriveAddresses(clean, this.networkId, this.scanWindow);
+    this.sessionPhrase = clean;
   }
 
   unlock(password: string): void {
     const phrase = this.revealMnemonic(password);
     this.addresses = deriveAddresses(phrase, this.networkId, this.scanWindow);
+    this.sessionPhrase = phrase;
   }
 
   lock(): void {
     this.addresses = null;
+    this.sessionPhrase = null;
+  }
+
+  /** Phrase for signing: from `password` when one is given, else the unlocked session's. */
+  private signingPhrase(password?: string): string {
+    if (password) return this.revealMnemonic(password);
+    if (!this.addresses || !this.sessionPhrase) throw new Error("Wallet is locked.");
+    return this.sessionPhrase;
   }
 
   revealMnemonic(password: string): string {
@@ -283,7 +295,7 @@ export class MobileWallet {
     if (!this.validateAddress(destAddress)) throw new Error("Invalid destination address.");
     if (amountSompi <= 0n) throw new Error("Amount must be greater than zero.");
 
-    const phrase = this.revealMnemonic(password); // wrong password throws here
+    const phrase = this.signingPhrase(password);
     const keyMap = deriveKeyMap(phrase, this.networkId, this.scanWindow);
 
     const [utxos, info] = await Promise.all([this.gatherUtxos(), this.chain.getInfo()]);
@@ -361,7 +373,7 @@ export class MobileWallet {
     onProgress?: (p: ConsolidateProgress) => void
   ): Promise<ConsolidateResult> {
     if (!this.addresses) throw new Error("Wallet is locked.");
-    const phrase = this.revealMnemonic(password); // one auth for the whole multi-batch run
+    const phrase = this.signingPhrase(password);
     const keys = Array.from(deriveKeyMap(phrase, this.networkId, this.scanWindow).values());
     const changeAddress = this.addresses.receive[0];
     const owner = changeAddress;
@@ -560,7 +572,7 @@ export class MobileWallet {
     if (!params.prompt.trim()) throw new Error("Enter a prompt.");
     if (params.rewardSompi <= 0n) throw new Error("Set an inference reward.");
 
-    const phrase = this.revealMnemonic(password); // wrong password throws here
+    const phrase = this.signingPhrase(password);
     const keyMap = deriveKeyMap(phrase, this.networkId, this.scanWindow);
 
     const [utxos, info] = await Promise.all([this.gatherUtxos(), this.chain.getInfo()]);
@@ -756,7 +768,7 @@ export class MobileWallet {
     password: string
   ): Promise<{ reclaimedSompi: bigint; txId: string | null; count: number; remaining: number }> {
     if (!this.addresses) throw new Error("Wallet is locked.");
-    const phrase = this.revealMnemonic(password); // wrong password throws here
+    const phrase = this.signingPhrase(password);
     const info = await this.chain.getInfo();
     const r = await this.reclaimMatured(phrase, info);
     const remaining = listEscrows(this.addresses.receive[0]).length;
@@ -812,7 +824,7 @@ export class MobileWallet {
     const owner = this.addresses.receive[0];
     const locked = loadAiHistory(owner).filter((e) => e.seedHex && !e.secretHex);
     if (locked.length === 0) return 0;
-    const phrase = this.revealMnemonic(password);
+    const phrase = this.signingPhrase(password);
     const ownerKey = deriveKeyMap(phrase, this.networkId, this.scanWindow).get(owner);
     if (!ownerKey) throw new Error("Wallet key unavailable.");
     let n = 0;

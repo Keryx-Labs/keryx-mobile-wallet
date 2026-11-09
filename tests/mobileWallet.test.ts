@@ -256,3 +256,38 @@ describe("MobileWallet (REST send path, real crypto)", () => {
     ).rejects.toThrow(/wrong password/i);
   });
 });
+
+describe("signing with the unlocked session", () => {
+  beforeEach(() => (globalThis as any).localStorage.clear());
+
+  async function unlockedWallet() {
+    const store = memStore();
+    const probe = new MobileWallet(new FakeChain("x", 0n) as any, store, { scanWindow: 2 });
+    await probe.createOrImport("pw", probe.newMnemonic());
+    const chain = new FakeChain(probe.receiveAddress!, 100_000_000_000n);
+    const w = new MobileWallet(chain as any, store, { scanWindow: 2 });
+    w.unlock("pw");
+    return { w, chain };
+  }
+
+  it("sends without the password once unlocked, and refuses after lock", async () => {
+    const { w, chain } = await unlockedWallet();
+    const dest = w.receiveAddress!;
+    await w.send("", dest, 100_000_000n);
+    expect(chain.lastBody).not.toBeNull();
+    w.lock();
+    await expect(w.send("", dest, 100_000_000n)).rejects.toThrow(/locked/i);
+  });
+
+  it("still checks a password when one is given", async () => {
+    const { w } = await unlockedWallet();
+    await expect(w.send("wrong", w.receiveAddress!, 100_000_000n)).rejects.toThrow(/wrong password/i);
+  });
+
+  it("submits an AI request without the password once unlocked", async () => {
+    const { w, chain } = await unlockedWallet();
+    const r = await w.submitAiRequest("", { modelId: AI_MODELS[0].id, prompt: "hi", maxTokens: 64, rewardSompi: 50_000_000n });
+    expect(r.txId).toBeTruthy();
+    expect(chain.lastBody!.subnetwork_id).toBe(AI_REQUEST_SUBNETWORK_ID);
+  });
+});

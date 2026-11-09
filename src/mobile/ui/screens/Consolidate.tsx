@@ -10,7 +10,6 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
   const app = useApp();
   const [info, setInfo] = useState<ConsolidateInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<ConsolidateResult | null>(null);
@@ -41,14 +40,10 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
     const onProgress = (pr: { batch: number; remaining: number }) =>
       setProgress(`Batch ${pr.batch} · ${pr.remaining.toLocaleString()} left`);
     try {
-      const r = app.biometricEnabled
-        ? await app.consolidateWithBiometric(onProgress)
-        : await app.consolidate(pw, onProgress);
-      setPw("");
+      const r = await app.consolidate("", onProgress);
       setResult(r);
       void loadInfo(); // refresh the live count
     } catch (e) {
-      setPw("");
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
@@ -114,17 +109,6 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
               stays yours. One tap consolidates your whole eligible set automatically, one confirmed
               batch at a time — keep this open until it finishes.
             </p>
-            {!app.biometricEnabled && (
-              <label className="mb-3 block">
-                <span className="mb-1.5 block text-sm text-keryx-dim">Confirm with your password</span>
-                <input
-                  type="password"
-                  value={pw}
-                  onChange={(e) => setPw(e.target.value)}
-                  className="border border-keryx-border w-full rounded bg-keryx-green/[0.03] px-4 py-3 text-keryx-ink outline-none ring-keryx-green/60 focus:ring-2"
-                />
-              </label>
-            )}
             {err && (
               <div className="mb-3 rounded-sm bg-keryx-error/10 px-3 py-2 text-sm text-keryx-error">{err}</div>
             )}
@@ -135,15 +119,13 @@ export function Consolidate({ onClose }: { onClose: () => void }) {
               <Button
                 className="flex-1"
                 onClick={run}
-                disabled={busy || !canRun || (!app.biometricEnabled && pw.length === 0)}
+                disabled={busy || !canRun}
               >
                 {busy
                   ? progress || "Consolidating…"
                   : !canRun
                     ? "Nothing to do"
-                    : app.biometricEnabled
-                      ? "Confirm"
-                      : "Consolidate"}
+                    : "Consolidate"}
               </Button>
             </div>
           </>

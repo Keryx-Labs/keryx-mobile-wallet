@@ -58,7 +58,6 @@ interface AppCtx extends AppState {
   lock: () => void;
   refresh: (manual?: boolean) => Promise<void>;
   send: (password: string, dest: string, amountSompi: bigint) => Promise<{ txId: string }>;
-  sendWithBiometric: (dest: string, amountSompi: bigint) => Promise<{ txId: string }>;
   reviewSend: typeof buildSendConfirmation;
   usd: (krx: number) => string | null;
   openTrade: () => Promise<void>;
@@ -66,21 +65,17 @@ interface AppCtx extends AppState {
   openExplorerTx: (txId: string) => Promise<void>;
   donateAddress: string;
   submitAi: (password: string, params: AiRequestParams) => Promise<AiRequestResult>;
-  submitAiWithBiometric: (params: AiRequestParams) => Promise<AiRequestResult>;
   escrowSummary: () => Promise<{ totalSompi: bigint; maturedSompi: bigint; count: number; maturedCount: number }>;
   reclaimEscrows: (password: string) => Promise<{ reclaimedSompi: bigint; txId: string | null; count: number; remaining: number }>;
-  reclaimEscrowsWithBiometric: () => Promise<{ reclaimedSompi: bigint; txId: string | null; count: number; remaining: number }>;
   findAiResponse: (requestHash: string) => Promise<AiResponseFound | null>;
   aiProviders: () => Promise<AiProviders>;
   readAiAnswers: (entry: AiHistoryEntry) => Promise<AiAnswerState>;
   unlockAiHistory: (password: string) => Promise<number>;
-  unlockAiHistoryWithBiometric: () => Promise<number>;
   fetchAiResult: (cid: string) => Promise<string>;
   setMinerMode: (on: boolean) => void;
   consolidatePreview: () => Promise<ConsolidateInfo>;
   miningStats: () => Promise<MiningStats>;
   consolidate: (password: string, onProgress?: (p: ConsolidateProgress) => void) => Promise<ConsolidateResult>;
-  consolidateWithBiometric: (onProgress?: (p: ConsolidateProgress) => void) => Promise<ConsolidateResult>;
   wipe: () => Promise<void>;
 }
 
@@ -306,25 +301,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [wallet, refresh]
   );
 
-  const sendWithBiometric = useCallback(
-    async (dest: string, amountSompi: bigint) => {
-      if (!wallet || !runtime) throw new Error("Wallet not ready.");
-      const store = secureStore(runtime.native);
-      let pw: string | null;
-      try {
-        pw = await unlockWithBiometrics(store, runtime.native);
-      } catch (e) {
-        throw new Error(friendlyBiometryError(e));
-      }
-      if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
-      const r = await wallet.send(pw, dest, amountSompi);
-      addRecent(wallet.receiveAddress, dest);
-      await refresh();
-      return { txId: r.txId };
-    },
-    [wallet, runtime, refresh]
-  );
-
   const submitAi = useCallback(
     async (password: string, params: AiRequestParams) => {
       if (!wallet) throw new Error("Wallet not ready.");
@@ -344,35 +320,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       return r;
     },
     [wallet, refresh]
-  );
-
-  const submitAiWithBiometric = useCallback(
-    async (params: AiRequestParams) => {
-      if (!wallet || !runtime) throw new Error("Wallet not ready.");
-      const store = secureStore(runtime.native);
-      let pw: string | null;
-      try {
-        pw = await unlockWithBiometrics(store, runtime.native);
-      } catch (e) {
-        throw new Error(friendlyBiometryError(e));
-      }
-      if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
-      const r = await wallet.submitAiRequest(pw, params);
-      addAiHistory(wallet.receiveAddress, {
-        txId: r.txId,
-        requestHash: r.requestHash,
-        modelId: params.modelId,
-        prompt: params.prompt,
-        ts: Date.now(),
-        feeSompi: r.feeSompi.toString(),
-        seedHex: r.seedHex,
-        secretHex: r.secretHex,
-        recipients: r.recipients,
-      });
-      await refresh();
-      return r;
-    },
-    [wallet, runtime, refresh]
   );
 
   const findAiResponse = useCallback(
@@ -403,18 +350,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     },
     [wallet]
   );
-
-  const unlockAiHistoryWithBiometric = useCallback(async () => {
-    if (!wallet || !runtime) throw new Error("Wallet not ready.");
-    let pw: string | null;
-    try {
-      pw = await unlockWithBiometrics(secureStore(runtime.native), runtime.native);
-    } catch (e) {
-      throw new Error(friendlyBiometryError(e));
-    }
-    if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
-    return wallet.unlockAiHistory(pw);
-  }, [wallet, runtime]);
 
   const fetchAiResult = useCallback(
     async (cid: string) => fetchIpfsText(cid, runtime?.native ?? false),
@@ -451,21 +386,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [wallet, refresh]
   );
 
-  const reclaimEscrowsWithBiometric = useCallback(async () => {
-    if (!wallet || !runtime) throw new Error("Wallet not ready.");
-    const store = secureStore(runtime.native);
-    let pw: string | null;
-    try {
-      pw = await unlockWithBiometrics(store, runtime.native);
-    } catch (e) {
-      throw new Error(friendlyBiometryError(e));
-    }
-    if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
-    const r = await wallet.reclaimEscrows(pw);
-    await refresh();
-    return r;
-  }, [wallet, runtime, refresh]);
-
   const consolidate = useCallback(
     async (password: string, onProgress?: (p: ConsolidateProgress) => void) => {
       if (!wallet) throw new Error("Wallet not ready.");
@@ -474,24 +394,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       return r;
     },
     [wallet, refresh]
-  );
-
-  const consolidateWithBiometric = useCallback(
-    async (onProgress?: (p: ConsolidateProgress) => void) => {
-      if (!wallet || !runtime) throw new Error("Wallet not ready.");
-      const store = secureStore(runtime.native);
-      let pw: string | null;
-      try {
-        pw = await unlockWithBiometrics(store, runtime.native);
-      } catch (e) {
-        throw new Error(friendlyBiometryError(e));
-      }
-      if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
-      const r = await wallet.consolidate(pw, onProgress);
-      await refresh();
-      return r;
-    },
-    [wallet, runtime, refresh]
   );
 
   const wipe = useCallback(async () => {
@@ -513,7 +415,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     lock,
     refresh,
     send,
-    sendWithBiometric,
     reviewSend: buildSendConfirmation,
     usd: (krx: number) => krxToUsd(krx, s.price),
     openTrade: async () => {
@@ -530,21 +431,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     },
     donateAddress: runtime?.donateAddress ?? "",
     submitAi,
-    submitAiWithBiometric,
     escrowSummary,
     reclaimEscrows,
-    reclaimEscrowsWithBiometric,
     findAiResponse,
     aiProviders,
     readAiAnswers,
     unlockAiHistory,
-    unlockAiHistoryWithBiometric,
     fetchAiResult,
     setMinerMode,
     consolidatePreview,
     miningStats,
     consolidate,
-    consolidateWithBiometric,
     wipe,
   };
 

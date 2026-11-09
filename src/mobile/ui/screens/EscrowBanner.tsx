@@ -11,8 +11,6 @@ export function EscrowBanner() {
   const app = useApp();
   const [sum, setSum] = useState<Summary | null>(null);
   const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const [pw, setPw] = useState("");
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
@@ -31,16 +29,11 @@ export function EscrowBanner() {
 
   if (!sum || sum.count === 0) return null;
 
-  const run = async (password?: string) => {
+  const run = async () => {
     setBusy(true);
     setMsg("");
     try {
-      const r =
-        password !== undefined
-          ? await app.reclaimEscrows(password)
-          : await app.reclaimEscrowsWithBiometric();
-      setPw("");
-      setAsking(false);
+      const r = await app.reclaimEscrows("");
       setMsg(r.count > 0 ? `Reclaimed ${formatKrx(r.reclaimedSompi)} KRX` : "Nothing matured yet.");
       await load();
     } catch (e) {
@@ -51,10 +44,6 @@ export function EscrowBanner() {
     }
   };
 
-  const onReclaim = () => {
-    if (app.biometricEnabled) void run();
-    else setAsking(true);
-  };
 
   return (
     <div className="rounded border border-keryx-warn/30 bg-keryx-warn/10 px-4 py-3">
@@ -63,32 +52,14 @@ export function EscrowBanner() {
         {formatKrx(sum.totalSompi)} KRX is held from your AI requests and returns to you after its
         lock (~1h).{sum.maturedSompi > 0n ? ` ${formatKrx(sum.maturedSompi)} KRX is ready now.` : ""}
       </div>
-      {sum.maturedCount > 0 && !asking && (
+      {sum.maturedCount > 0 && (
         <button
           disabled={busy}
-          onClick={onReclaim}
+          onClick={() => void run()}
           className="mt-2 rounded-full bg-keryx-warn/20 px-3 py-1 text-xs font-medium text-keryx-warn disabled:opacity-60"
         >
           {busy ? "Reclaiming…" : `Reclaim ${formatKrx(sum.maturedSompi)} KRX`}
         </button>
-      )}
-      {asking && (
-        <div className="mt-2 flex gap-2">
-          <input
-            type="password"
-            value={pw}
-            onChange={(e) => setPw(e.target.value)}
-            placeholder="Password"
-            className="border border-keryx-border flex-1 rounded-sm bg-keryx-green/[0.03] px-3 py-2 text-sm text-keryx-ink outline-none ring-keryx-green/60 focus:ring-2"
-          />
-          <button
-            disabled={busy || !pw}
-            onClick={() => void run(pw)}
-            className="rounded-sm bg-keryx-warn/20 px-3 text-xs font-medium text-keryx-warn disabled:opacity-60"
-          >
-            Reclaim
-          </button>
-        </div>
       )}
       {msg && <div className="mt-1 text-xs text-keryx-dim">{msg}</div>}
     </div>

@@ -3,9 +3,8 @@ import { useApp } from "../WalletProvider";
 
 // Wallet-screen Consolidate row (miner mode): "Consolidate" + merge icon + a live UTXO-count pill.
 // Always visible when miner mode is on. The count is refreshed lightly in the background (on mount,
-// every 2 min while the wallet screen is open, and after a consolidate). Tapping runs the consolidate
-// inline: the pill becomes a loading indicator, biometrics confirm (explicit authorization), then it
-// broadcasts. Without biometrics it opens the full Consolidate modal (password confirm) instead.
+// every 2 min while the wallet screen is open, and after a consolidate). Tapping opens the Consolidate
+// modal, which explains it and asks for a tap to confirm.
 
 function MergeIcon() {
   return (
@@ -28,13 +27,9 @@ function MergeIcon() {
   );
 }
 
-type Status = "idle" | "working" | "done" | "error";
-
 export function ConsolidateRow({ onOpenModal }: { onOpenModal: () => void }) {
   const app = useApp();
   const [count, setCount] = useState<number | null>(null);
-  const [status, setStatus] = useState<Status>("idle");
-  const [msg, setMsg] = useState<string>("");
   const alive = useRef(true);
 
   const loadCount = useCallback(async () => {
@@ -56,63 +51,8 @@ export function ConsolidateRow({ onOpenModal }: { onOpenModal: () => void }) {
     };
   }, [loadCount]);
 
-  const onTap = async () => {
-    if (status === "working") return;
-    if (!app.biometricEnabled) {
-      onOpenModal(); // password confirm lives in the modal
-      return;
-    }
-    setStatus("working");
-    setMsg("");
-    try {
-      const r = await app.consolidateWithBiometric((pr) => {
-        if (alive.current) {
-          setStatus("working");
-          setMsg(`${pr.remaining.toLocaleString()} left`);
-        }
-      });
-      if (!alive.current) return;
-      setStatus("done");
-      setMsg(r.remaining <= 1 ? "Done" : `${r.remaining.toLocaleString()} left`);
-      setCount(r.remaining);
-      setTimeout(() => {
-        if (alive.current) {
-          setStatus("idle");
-          setMsg("");
-        }
-      }, 3000);
-    } catch (e) {
-      if (!alive.current) return;
-      const m = e instanceof Error ? e.message : String(e);
-      if (/cancel/i.test(m)) {
-        setStatus("idle");
-        return;
-      }
-      setStatus("error");
-      setMsg(m.length > 42 ? "Couldn't consolidate" : m);
-      setTimeout(() => {
-        if (alive.current) {
-          setStatus("idle");
-          setMsg("");
-        }
-      }, 4000);
-    }
-  };
 
   const Pill = () => {
-    if (status === "working")
-      return (
-        <span className="inline-flex items-center gap-2 rounded-full bg-keryx-border/60 px-3 py-1 text-xs text-keryx-dim">
-          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-keryx-cta" />
-          {msg || "Preparing…"}
-        </span>
-      );
-    if (status === "done")
-      return (
-        <span className="rounded-full bg-keryx-green/15 px-3 py-1 text-xs text-keryx-green">{msg}</span>
-      );
-    if (status === "error")
-      return <span className="rounded-full bg-keryx-error/15 px-3 py-1 text-xs text-keryx-error">{msg}</span>;
     if (app.resumableConsolidation)
       return (
         <span className="rounded-full bg-keryx-warn/20 px-3 py-1 text-xs font-medium text-keryx-warn">
@@ -128,7 +68,7 @@ export function ConsolidateRow({ onOpenModal }: { onOpenModal: () => void }) {
 
   return (
     <button
-      onClick={onTap}
+      onClick={onOpenModal}
       className="border border-keryx-border flex items-center gap-3 rounded bg-keryx-surface px-4 py-3 text-left active:scale-[0.99] hover:border-keryx-borderHi"
     >
       <span className="text-sm font-medium text-keryx-green">Consolidate</span>
