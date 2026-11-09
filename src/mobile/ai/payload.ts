@@ -8,7 +8,7 @@
 //
 // These are pure functions (no network, no wallet) so they're fully unit-testable.
 
-import { blake2b } from "@noble/hashes/blake2b";
+import { blake2b } from "@noble/hashes/blake2.js";
 
 export const AI_REQUEST_SUBNETWORK_ID = "0300000000000000000000000000000000000000";
 export const AI_RESPONSE_SUBNETWORK_ID = "0400000000000000000000000000000000000000";
