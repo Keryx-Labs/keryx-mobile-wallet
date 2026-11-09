@@ -150,6 +150,11 @@ export class HybridProvider implements ChainProvider {
     return this.rest.getAiProviders();
   }
 
+  getInferenceResult(txid: string): Promise<import("./types").InferenceResult> {
+    if (!this.rest.getInferenceResult) return Promise.reject(new Error("The gateway does not serve inference results."));
+    return this.rest.getInferenceResult(txid);
+  }
+
   listInferences(limit: number): Promise<InferenceRecord[]> {
     return this.rest.listInferences(limit);
   }

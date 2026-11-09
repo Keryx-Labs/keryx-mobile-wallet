@@ -1,7 +1,6 @@
-// Local AI request history. The gateway's /api/v1/infer feed is GLOBAL and carries no requester
-// address, so the only way to show "your" past interactions is to remember the request tx ids we
-// created. On each submit we append an entry here; the AI tab lists them and reloads each answer from
-// /infer by tx id. Only public data is stored (tx id, model, prompt) — never keys/seed/password.
+// Local AI request history. The gateway feed carries no requester address, so the wallet remembers the
+// request tx ids it created. Stored on device only: prompts, answers and each request's own secret
+// (it opens that request and its answers, nothing else). Never the seed, keys or password.
 // Keyed by the wallet's primary address so a different imported wallet doesn't show someone else's list.
 //
 // Persisted via the durable store (survives APK updates / WebView resets). This list is also
@@ -20,6 +19,13 @@ export interface AiHistoryEntry {
   prompt: string;
   ts: number; // epoch ms
   feeSompi: string; // bigint as string
+  /** Private request: first input outpoint (`txid ‖ index LE`), hex. */
+  seedHex?: string;
+  /** Private request: secret derived from the wallet key and the seed, hex. Absent until unlocked. */
+  secretHex?: string;
+  recipients?: number;
+  answer?: string;
+  responder?: string;
 }
 
 interface RawStore {
@@ -80,6 +86,14 @@ export function mergeAiHistory(address: string | null, entries: AiHistoryEntry[]
   for (const e of entries) byId.set(e.txId, e);
   for (const e of existing) byId.set(e.txId, e);
   persist(address, [...byId.values()]);
+}
+
+/** Patch one stored entry in place. Best-effort; never throws. */
+export function updateAiHistory(address: string | null, txId: string, patch: Partial<AiHistoryEntry>): void {
+  if (!address) return;
+  const raw = read();
+  if (!raw || raw.address !== address || !Array.isArray(raw.items)) return;
+  persist(address, raw.items.map((e) => (e.txId === txId ? { ...e, ...patch } : e)));
 }
 
 export function clearAiHistory(): void {

@@ -197,7 +197,7 @@ export function Ai() {
     setModelId(h.modelId);
     setPrompt(h.prompt);
     setAnswer(null);
-    setReq({ txId: h.txId, requestHash: h.requestHash, feeSompi: BigInt(h.feeSompi), escrowSompi: 0n, seedHex: "", recipients: 0 });
+    setReq({ txId: h.txId, requestHash: h.requestHash, feeSompi: BigInt(h.feeSompi), escrowSompi: 0n, seedHex: h.seedHex ?? "", secretHex: h.secretHex ?? "", recipients: h.recipients ?? 0 });
     attempts.current = 0;
     setStatus("Loading result\u2026");
     setStage("submitted");

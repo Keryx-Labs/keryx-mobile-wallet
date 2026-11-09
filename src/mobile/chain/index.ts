@@ -70,4 +70,6 @@ export type {
   BroadcastResult,
   AiProvider,
   AiProviders,
+  SealedResponse,
+  InferenceResult,
 } from "./types";

@@ -332,6 +332,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         prompt: params.prompt,
         ts: Date.now(),
         feeSompi: r.feeSompi.toString(),
+        seedHex: r.seedHex,
+        secretHex: r.secretHex,
+        recipients: r.recipients,
       });
       await refresh();
       return r;
@@ -358,6 +361,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         prompt: params.prompt,
         ts: Date.now(),
         feeSompi: r.feeSompi.toString(),
+        seedHex: r.seedHex,
+        secretHex: r.secretHex,
+        recipients: r.recipients,
       });
       await refresh();
       return r;

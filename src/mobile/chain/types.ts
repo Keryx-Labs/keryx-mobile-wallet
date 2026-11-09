@@ -119,10 +119,29 @@ export interface AiProviders {
   window: AiProvider[];
 }
 
+/** One answer to a private request, sealed to the requester. */
+export interface SealedResponse {
+  responderPubkey: string; // escrow key of the answering miner, hex
+  bodyHex: string;
+  daaScore: bigint;
+}
+
+/** Gateway view of one request (`/api/v1/inference/:txid`). */
+export interface InferenceResult {
+  txId: string;
+  sealed: boolean;
+  sealedRecipients: number | null;
+  sealedResponses: SealedResponse[];
+  resultCid: string | null;
+  resultText: string | null;
+}
+
 export interface ChainProvider {
   readonly kind: "rest" | "direct" | "hybrid";
   /** Miners a private request can be sealed to. Gateway only. */
   getAiProviders?(): Promise<AiProviders>;
+  /** One request and its answers. Gateway only. */
+  getInferenceResult?(txid: string): Promise<InferenceResult>;
   getInfo(): Promise<NetworkInfo>;
   getBalanceSompi(address: string): Promise<bigint>;
   getUtxos(address: string): Promise<Utxo[]>;

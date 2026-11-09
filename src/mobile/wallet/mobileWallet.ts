@@ -3,7 +3,7 @@
 // only ever receives public addresses and a signed tx.
 
 import * as kaspa from "../../sdk/kaspa.js";
-import type { AiProvider, ChainProvider, HistoryEntry, Utxo } from "../chain";
+import type { AiProvider, ChainProvider, HistoryEntry, RichTx, Utxo } from "../chain";
 import { signSpend, signConsolidate, consolidateInfo, COINBASE_MATURITY } from "../chain";
 import type { ConsolidateInfo } from "../chain";
 export type { ConsolidateInfo } from "../chain";
@@ -19,6 +19,8 @@ import {
 } from "../ai/tx";
 import {
   bytesToHex,
+  hexToBytes,
+  openOwnPrompt,
   cohortSeed,
   compressPrompt,
   deriveRequestSecret,
@@ -28,7 +30,8 @@ import {
   sealRequest,
 } from "../ai/privateInference";
 import { keySchedule2ActivationDaa } from "../ai/gates";
-import { MIN_AI_REQUEST_PRIORITY_FEE } from "../ai/payload";
+import { MIN_AI_REQUEST_PRIORITY_FEE, aiRequestHashOfPayload } from "../ai/payload";
+import { openAnswers, type OpenedAnswer } from "../ai/answers";
 import { signEscrowReclaim, type EscrowUtxo } from "../chain";
 import {
   listEscrows,
@@ -38,7 +41,7 @@ import {
   outpointKey,
   type EscrowRecord,
 } from "../ai/escrow";
-import { mergeAiHistory, type AiHistoryEntry } from "../ai/history";
+import { mergeAiHistory, loadAiHistory, updateAiHistory, type AiHistoryEntry } from "../ai/history";
 import { parseAiRequestPayload, aiRequestHash } from "../ai/payload";
 import {
   loadConsolidateSession,
@@ -108,7 +111,18 @@ export interface AiRequestResult {
   escrowSompi: bigint; // reward paid into the vault (goes to the answering miner)
   /** Outpoint of the first input (`txid ‖ index LE`), hex: re-derives the request secret. */
   seedHex: string;
+  /** Request secret, hex: opens the answers without the password. */
+  secretHex: string;
   recipients: number;
+}
+
+/** State of a private request's answers. */
+export interface AiAnswerState {
+  /** No secret stored yet: unlock the history with the password first. */
+  locked: boolean;
+  recipients: number | null;
+  opened: OpenedAnswer[];
+  unreadable: string | null;
 }
 
 export interface AiResponseFound {
@@ -593,6 +607,7 @@ export class MobileWallet {
     const ownerKey = keyMap.get(owner);
     if (!ownerKey) throw new Error("Wallet key unavailable.");
     const daa = info.lastDaaScore > providers.virtualDaaScore ? info.lastDaaScore : providers.virtualDaaScore;
+    const secret = deriveRequestSecret(ownerKey.toString(), seed);
     const payloadHex = sealRequest({
       modelIdHex: model,
       maxTokens: params.maxTokens,
@@ -600,7 +615,7 @@ export class MobileWallet {
       priorityFeeSompi: Number(priorityFee),
       prompt,
       recipientsHex: recipients,
-      secret: deriveRequestSecret(ownerKey.toString(), seed),
+      secret,
       schedule: daa >= keySchedule2ActivationDaa(this.networkId) ? 2 : 1,
     });
 
@@ -632,6 +647,7 @@ export class MobileWallet {
       feeSompi: signed.feeSompi,
       escrowSompi: signed.escrowSompi,
       seedHex: bytesToHex(seed),
+      secretHex: bytesToHex(secret),
       recipients: recipients.length,
     };
   }
@@ -675,6 +691,11 @@ export class MobileWallet {
         const out1 = r.outputs.find((o) => o.index === 1);
         if (!out0 || out0.address !== owner) continue; // change must come back to us
         if (!out1 || out1.address !== "") continue; // output[1] must be the non-standard (CSV) escrow
+        const sealed = sealedRequestOf(r);
+        if (sealed) {
+          history.push({ ...sealed, ts: r.timestampMs || Date.now() });
+          continue;
+        }
         const req = parseAiRequestPayload(r.payloadHex);
         if (!req) continue;
         const hash = aiRequestHash(req);
@@ -789,6 +810,45 @@ export class MobileWallet {
    * (the same source the web wallet uses). Returns null while the request is unanswered (no result
    * CID / text yet) or not yet indexed. Never logs the prompt or result.
    */
+  /**
+   * Derives the secret of every private request in the history that has none (entries rebuilt from
+   * the chain) and reopens their prompts. Needs the password. Returns how many were unlocked.
+   */
+  async unlockAiHistory(password: string): Promise<number> {
+    if (!this.addresses) throw new Error("Wallet is locked.");
+    const owner = this.addresses.receive[0];
+    const locked = loadAiHistory(owner).filter((e) => e.seedHex && !e.secretHex);
+    if (locked.length === 0) return 0;
+    const phrase = this.revealMnemonic(password);
+    const ownerKey = deriveKeyMap(phrase, this.networkId, this.scanWindow).get(owner);
+    if (!ownerKey) throw new Error("Wallet key unavailable.");
+    let n = 0;
+    for (const e of locked) {
+      const secret = deriveRequestSecret(ownerKey.toString(), hexToBytes(e.seedHex!));
+      let prompt = e.prompt;
+      if (!prompt) {
+        try {
+          const tx = await this.chain.getRichTransaction(e.txId);
+          prompt = openOwnPrompt(secret, hexToBytes(tx.payloadHex));
+        } catch {
+          /* keep the entry; the answer can still be opened */
+        }
+      }
+      updateAiHistory(owner, e.txId, { secretHex: bytesToHex(secret), prompt });
+      n++;
+    }
+    return n;
+  }
+
+  /** Reads and opens the answers of a private request from the gateway. */
+  async readAiAnswers(entry: AiHistoryEntry): Promise<AiAnswerState> {
+    if (!entry.secretHex) return { locked: true, recipients: entry.recipients ?? null, opened: [], unreadable: null };
+    if (!this.chain.getInferenceResult) throw new Error("This network connection cannot read AI answers.");
+    const result = await this.chain.getInferenceResult(entry.txId);
+    const { opened, unreadable } = openAnswers(hexToBytes(entry.secretHex), entry.txId, result.sealedResponses);
+    return { locked: false, recipients: result.sealedRecipients ?? entry.recipients ?? null, opened, unreadable };
+  }
+
   async findAiResponse(requestTxId: string, scanLimit = 50): Promise<AiResponseFound | null> {
     const id = requestTxId.toLowerCase();
     const feed = await this.chain.listInferences(scanLimit).catch(() => []);
@@ -837,3 +897,23 @@ export class MobileWallet {
   }
 }
 // end of mobileWallet.ts
+
+const PRIVATE_ENVELOPE_MAGIC_HEX = "004b5850";
+
+/** A sealed AiRequest rebuilt from its own transaction (prompt left empty until unlocked). */
+function sealedRequestOf(r: RichTx): Omit<AiHistoryEntry, "ts"> | null {
+  const hex = r.payloadHex.toLowerCase();
+  if (hex.length < 112 || hex.slice(104, 112) !== PRIVATE_ENVELOPE_MAGIC_HEX) return null;
+  const first = r.inputs[0];
+  if (!first || !/^[0-9a-f]{64}$/i.test(first.prevTxId)) return null;
+  const header = hexToBytes(hex.slice(0, 104));
+  const priorityFee = new DataView(header.buffer, header.byteOffset, header.byteLength).getBigUint64(44, true);
+  return {
+    txId: r.txId,
+    requestHash: aiRequestHashOfPayload(hexToBytes(hex)),
+    modelId: hex.slice(0, 64),
+    prompt: "",
+    feeSompi: priorityFee.toString(),
+    seedHex: bytesToHex(cohortSeed(first.prevTxId, first.prevIndex)),
+  };
+}

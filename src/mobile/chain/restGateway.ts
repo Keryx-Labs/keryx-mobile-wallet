@@ -108,6 +108,25 @@ export class RestGatewayProvider implements ChainProvider {
     return { virtualDaaScore: toBig(j.virtual_daa_score), cohort: list(j.cohort), window: list(j.window) };
   }
 
+  async getInferenceResult(txid: string): Promise<import("./types").InferenceResult> {
+    const j = await httpGetJson(this.url(`/inference/${encodeURIComponent(txid)}`), this.isNative);
+    const list = Array.isArray(j.sealed_responses) ? j.sealed_responses : [];
+    return {
+      txId: String(j.tx_id ?? txid),
+      sealed: Boolean(j.sealed),
+      sealedRecipients: j.sealed_recipients != null ? Number(j.sealed_recipients) : null,
+      sealedResponses: list
+        .filter((r: any) => typeof r?.responder_pubkey === "string" && typeof r?.body === "string")
+        .map((r: any) => ({
+          responderPubkey: String(r.responder_pubkey).toLowerCase(),
+          bodyHex: String(r.body),
+          daaScore: toBig(r.daa_score),
+        })),
+      resultCid: j.result_cid ? String(j.result_cid) : null,
+      resultText: j.result_text != null ? String(j.result_text) : null,
+    };
+  }
+
   async getRichTransaction(txid: string): Promise<import("./types").RichTx> {
     const j = await httpGetJson(this.url(`/transactions/${encodeURIComponent(txid)}`), this.isNative);
     const outs = Array.isArray(j.outputs) ? j.outputs : [];
@@ -123,11 +142,13 @@ export class RestGatewayProvider implements ChainProvider {
         address: String(o.address ?? ""),
         amountSompi: toBig(o.amount_sompi),
       })),
-      inputs: ins.map((x: any) => ({
-        prevTxId: String(x.prev_tx_id ?? ""),
-        prevIndex: Number(x.prev_output_index ?? 0),
-        address: String(x.address ?? ""),
-      })),
+      inputs: [...ins]
+        .sort((a: any, b: any) => Number(a.input_index ?? 0) - Number(b.input_index ?? 0))
+        .map((x: any) => ({
+          prevTxId: String(x.prev_tx_id ?? ""),
+          prevIndex: Number(x.prev_output_index ?? 0),
+          address: String(x.address ?? ""),
+        })),
     };
   }
 
