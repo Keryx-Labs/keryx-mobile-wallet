@@ -2,6 +2,32 @@
 
 All notable changes to the mobile app. Format loosely follows Keep a Changelog.
 
+## [1.1.0] — 2026-11-09 (private AI chat, mining tab)
+
+### Added
+- **Private AI chat.** Requests are sealed to the miners of the chosen model and their answers are
+  sealed back to you; only this wallet can read them. Fixed price per model, live miner counts.
+- **Chat features from the website:** conversation threads with follow-ups, Continue for cut answers,
+  optional web search with sources, Keryx facts for questions about the network, reply in your language.
+- **Answers rendered as Markdown** (lists, tables, code, links).
+- **Recovery of private requests** from the chain after a reinstall; unlock them to read the answers.
+- **Mining tab**, shown when one of your addresses mined in the last 24 h: holder-reward bracket from the
+  node with the full ladder, last-24 h income and burn, model-tier mix, inference service standing, and
+  Consolidate.
+
+### Changed
+- **No password once unlocked:** sending, AI requests and consolidation sign with the unlocked session.
+- **Consolidate is always on the wallet screen;** the "I own a miner" setting is gone.
+- **Balances and sends go through a node** when one is reachable; history stays on the gateway.
+- Design aligned with the website and the desktop wallet.
+
+### Fixed
+- Coins on addresses without gateway history are now counted in the balance.
+- Holder-reward bracket uses the current (H15) table and the node's figures.
+- The open AI conversation is kept when switching tabs.
+- Wallet engine no longer fails with "memory access out of bounds" when the app boots twice.
+- Storage plugin could hang on some devices.
+
 ## [1.0.9] — 2026-08-31 (network sync)
 
 Sync with the current Keryx network. Balance / history / send / receive / price / settings / persistence
