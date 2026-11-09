@@ -119,6 +119,13 @@ export class HybridProvider implements ChainProvider {
     return this.viaNode((n) => n.getBalanceSompi(address), () => this.rest.getBalanceSompi(address));
   }
 
+  getUtxosForAddresses(addresses: string[]): Promise<Utxo[]> {
+    return this.viaNode(
+      (n) => n.getUtxosMany(addresses),
+      () => Promise.reject(new Error("No node reachable."))
+    );
+  }
+
   getUtxos(address: string): Promise<Utxo[]> {
     return this.viaNode((n) => n.getUtxos(address), () => this.rest.getUtxos(address));
   }

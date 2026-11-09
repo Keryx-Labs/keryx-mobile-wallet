@@ -240,20 +240,14 @@ export class MobileWallet {
     }
   }
 
-  /**
-   * Balance + history in one fast pass. `/addresses/:addr` is fast (~0.5-1.5s) and carries the
-   * activity flag + history; the slow `/utxos` endpoint (~6-9s) is only hit for addresses that
-   * actually have activity. All calls run in parallel. A fresh wallet does zero slow calls.
-   */
+  /** Balance from the UTXOs of every derived address, history from the gateway. */
   async overview(historyLimit = 50): Promise<{ balanceSompi: bigint; history: HistoryEntry[] }> {
     const addrs = this.allAddresses;
     const summaries = await pmap(addrs, 10, (a) => this.chain.getAddress(a).catch(() => null));
 
     const seen = new Map<string, HistoryEntry>();
-    const active: string[] = [];
-    summaries.forEach((s, i) => {
+    summaries.forEach((s) => {
       if (!s) return;
-      if (s.totalTxCount > 0 || s.totalReceivedSompi > 0n) active.push(addrs[i]);
       for (const t of s.transactions) {
         const prev = seen.get(t.txId);
         if (prev) prev.amountSompi += t.amountSompi;
@@ -261,9 +255,9 @@ export class MobileWallet {
       }
     });
 
-    const utxoLists = await pmap(active, 8, (a) => this.chain.getUtxos(a).catch(() => []));
+    const utxos = await this.gatherUtxos();
     let balanceSompi = 0n;
-    for (const list of utxoLists) for (const u of list) balanceSompi += u.amountSompi;
+    for (const u of utxos) balanceSompi += u.amountSompi;
 
     const history = [...seen.values()]
       .sort((a, b) => (a.daaScore < b.daaScore ? 1 : a.daaScore > b.daaScore ? -1 : 0))
@@ -518,20 +512,18 @@ export class MobileWallet {
    * `complete` is false if ANY address query failed — callers that must not mistake a partial or
    * failed read for an empty wallet (e.g. the consolidate confirmation wait) check this flag.
    */
+  // Every derived address is read, whatever its history says: the gateway only keeps recent history,
+  // so an address untouched for months still holds coins.
   private async gatherUtxosDetailed(): Promise<{ utxos: Utxo[]; complete: boolean }> {
-    let complete = true;
-    const summaries = await pmap(this.allAddresses, 10, async (a) => {
+    if (this.chain.getUtxosForAddresses) {
       try {
-        return await this.chain.getAddress(a);
+        return { utxos: await this.chain.getUtxosForAddresses(this.allAddresses), complete: true };
       } catch {
-        complete = false;
-        return null;
+        /* no node: read each address from the gateway */
       }
-    });
-    const active = this.allAddresses.filter(
-      (_, i) => summaries[i] && (summaries[i]!.totalTxCount > 0 || summaries[i]!.totalReceivedSompi > 0n)
-    );
-    const lists = await pmap(active, 8, async (a) => {
+    }
+    let complete = true;
+    const lists = await pmap(this.allAddresses, 8, async (a) => {
       try {
         return await this.chain.getUtxos(a);
       } catch {

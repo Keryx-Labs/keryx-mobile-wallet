@@ -125,6 +125,12 @@ export class NodeRpc {
     return (res?.entries ?? []).map((r: any) => fromNodeEntry(r, address));
   }
 
+  async getUtxosMany(addresses: string[]): Promise<Utxo[]> {
+    if (addresses.length === 0) return [];
+    const res: any = await this.call("getUtxosByAddresses", (c) => c.getUtxosByAddresses(addresses));
+    return (res?.entries ?? []).map((r: any) => fromNodeEntry(r, ""));
+  }
+
   async getBalanceSompi(address: string): Promise<bigint> {
     const res: any = await this.call("getBalanceByAddress", (c) => c.getBalanceByAddress({ address } as never));
     return BigInt(res?.balance ?? 0);

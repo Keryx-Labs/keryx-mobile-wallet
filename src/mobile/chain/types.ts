@@ -145,6 +145,8 @@ export interface ChainProvider {
   getInfo(): Promise<NetworkInfo>;
   getBalanceSompi(address: string): Promise<bigint>;
   getUtxos(address: string): Promise<Utxo[]>;
+  /** UTXOs of many addresses in one node read; throws when no node answers. */
+  getUtxosForAddresses?(addresses: string[]): Promise<Utxo[]>;
   getAddress(address: string): Promise<AddressSummary>;
   getTransaction(txid: string): Promise<TxDetail>;
   /** Full transaction detail (payload + outputs + input outpoints) for chain-based recovery. */
