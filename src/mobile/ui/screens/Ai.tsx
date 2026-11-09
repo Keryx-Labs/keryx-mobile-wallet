@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../WalletProvider";
+import { Markdown } from "../Markdown";
 import { Button, Card, Toast, copy } from "../kit";
 import { AI_MODELS, modelById, fetchLiveModels, type AiModel } from "../../ai/models";
 import { EscrowBanner } from "./EscrowBanner";
@@ -558,8 +559,8 @@ export function Ai() {
               <Card key={e.txId}>
                 <div className="whitespace-pre-wrap break-words text-sm text-keryx-text">{isLocked(e) ? "Locked request" : e.prompt}</div>
                 {e.answer && (
-                  <div className="mt-2 whitespace-pre-wrap break-words border-t border-keryx-border pt-2 text-sm text-keryx-ink">
-                    {normalizeTicker(e.answer)}
+                  <div className="mt-2 border-t border-keryx-border pt-2">
+                    <Markdown text={normalizeTicker(e.answer)} />
                   </div>
                 )}
               </Card>
@@ -592,7 +593,7 @@ export function Ai() {
           {answer != null && (
             <Card>
               <div className="mb-2 font-semibold text-keryx-ink">Answer</div>
-              <div className="whitespace-pre-wrap break-words text-sm text-keryx-ink">{normalizeTicker(answer)}</div>
+              <Markdown text={normalizeTicker(answer)} />
               {active.sources && active.sources.length > 0 && (
                 <div className="mt-3 flex flex-col gap-1 text-xs text-keryx-dim">
                   <span>Sources</span>
