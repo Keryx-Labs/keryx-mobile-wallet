@@ -127,6 +127,59 @@ export class RestGatewayProvider implements ChainProvider {
     };
   }
 
+  async getHolderReward(address: string): Promise<import("./types").HolderRewardStatus> {
+    const j = await httpGetJson(this.url(`/addresses/${encodeURIComponent(address)}/holder-reward`), this.isNative);
+    const inc = j.income;
+    return {
+      address: String(j.address ?? address),
+      isMiner: Boolean(j.is_miner),
+      balanceSompi: toBig(j.balance_sompi),
+      production24hSompi: toBig(j.production_24h_sompi),
+      ratio: Number(j.ratio ?? 0),
+      bracketBps: Number(j.bracket_bps ?? 0),
+      fullBracketRatio: Number(j.full_bracket_ratio ?? 120),
+      fullBracketBalanceSompi: toBig(j.full_bracket_balance_sompi),
+      next: j.next_bracket
+        ? {
+            bps: Number(j.next_bracket.bps),
+            needSompi: toBig(j.next_bracket.need_sompi),
+            targetBalanceSompi: toBig(j.next_bracket.target_balance_sompi),
+          }
+        : null,
+      income: inc
+        ? {
+            baseSompi: toBig(inc.base_sompi),
+            paidSompi: toBig(inc.paid_sompi),
+            burnedSompi: toBig(inc.burned_sompi),
+            escrowSompi: toBig(inc.escrow_sompi),
+            inferenceSompi: toBig(inc.inference_sompi),
+            chainBlocks: Number(inc.chain_blocks ?? 0),
+            windowDaa: Number(inc.income_window_daa ?? 0),
+            tierBaseSompi: (Array.isArray(inc.tier_base_sompi) ? inc.tier_base_sompi : []).map(toBig),
+          }
+        : null,
+    };
+  }
+
+  async getServiceStanding(address: string): Promise<import("./types").ServiceStanding> {
+    const j = await httpGetJson(this.url(`/addresses/${encodeURIComponent(address)}/service-strikes`), this.isNative);
+    const burns = Array.isArray(j.pending_burns) ? j.pending_burns : [];
+    return {
+      consecutiveMisses: Number(j.consecutive_misses ?? 0),
+      lifetimeStrikes: Number(j.lifetime_strikes ?? 0),
+      lastStrikeDaaScore: j.last_strike_daa_score != null ? toBig(j.last_strike_daa_score) : null,
+      suspendedUntilDaaScore: j.suspended_until_daa_score != null ? toBig(j.suspended_until_daa_score) : null,
+      virtualDaaScore: toBig(j.virtual_daa_score),
+      pendingBurnCount: burns.length,
+      pendingBurnSompi: burns.reduce((n: bigint, b: any) => n + toBig(b.burned_sompi), 0n),
+    };
+  }
+
+  async getInferencesServed(address: string): Promise<{ served: number; answered: number }> {
+    const j = await httpGetJson(this.url(`/addresses/${encodeURIComponent(address)}/inferences-served`), this.isNative);
+    return { served: Number(j.served ?? 0), answered: Number(j.answered ?? j.served ?? 0) };
+  }
+
   async getRichTransaction(txid: string): Promise<import("./types").RichTx> {
     const j = await httpGetJson(this.url(`/transactions/${encodeURIComponent(txid)}`), this.isNative);
     const outs = Array.isArray(j.outputs) ? j.outputs : [];

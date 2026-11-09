@@ -136,12 +136,50 @@ export interface InferenceResult {
   resultText: string | null;
 }
 
+/** Holder-reward status of a payout address, computed by the node (`/addresses/:a/holder-reward`). */
+export interface HolderRewardStatus {
+  address: string;
+  isMiner: boolean;
+  balanceSompi: bigint;
+  production24hSompi: bigint;
+  ratio: number;
+  bracketBps: number;
+  fullBracketRatio: number;
+  fullBracketBalanceSompi: bigint;
+  next: { bps: number; needSompi: bigint; targetBalanceSompi: bigint } | null;
+  income: {
+    baseSompi: bigint;
+    paidSompi: bigint;
+    burnedSompi: bigint;
+    escrowSompi: bigint;
+    inferenceSompi: bigint;
+    chainBlocks: number;
+    windowDaa: number;
+    tierBaseSompi: bigint[];
+  } | null;
+}
+
+/** Service-ledger standing of a payout address (`/addresses/:a/service-strikes`). */
+export interface ServiceStanding {
+  consecutiveMisses: number;
+  lifetimeStrikes: number;
+  lastStrikeDaaScore: bigint | null;
+  suspendedUntilDaaScore: bigint | null;
+  virtualDaaScore: bigint;
+  pendingBurnCount: number;
+  pendingBurnSompi: bigint;
+}
+
 export interface ChainProvider {
   readonly kind: "rest" | "direct" | "hybrid";
   /** Miners a private request can be sealed to. Gateway only. */
   getAiProviders?(): Promise<AiProviders>;
   /** One request and its answers. Gateway only. */
   getInferenceResult?(txid: string): Promise<InferenceResult>;
+  /** Mining status of a payout address. Gateway only. */
+  getHolderReward?(address: string): Promise<HolderRewardStatus>;
+  getServiceStanding?(address: string): Promise<ServiceStanding>;
+  getInferencesServed?(address: string): Promise<{ served: number; answered: number }>;
   getInfo(): Promise<NetworkInfo>;
   getBalanceSompi(address: string): Promise<bigint>;
   getUtxos(address: string): Promise<Utxo[]>;

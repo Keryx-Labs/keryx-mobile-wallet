@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { WalletProvider, useApp } from "./WalletProvider";
 import type { SectionId } from "../index";
 import { Onboarding } from "./screens/Onboarding";
@@ -8,13 +8,36 @@ import { Send } from "./screens/Send";
 import { Receive } from "./screens/Receive";
 import { History } from "./screens/History";
 import { Ai } from "./screens/Ai";
+import { Mining } from "./screens/Mining";
 import { Settings } from "./screens/Settings";
 
-const ICON: Record<SectionId, string> = {
+function PickaxeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="inline-block"
+    >
+      <path d="M3.5 9.5C7 5 13 3.5 18 5" />
+      <path d="M14.5 20.5C19 17 20.5 11 19 6" />
+      <path d="M18.5 5.5L5 19" />
+    </svg>
+  );
+}
+
+const ICON: Record<SectionId, ReactNode> = {
   home: "◈",
   send: "↑",
   receive: "↓",
   history: "≡",
+  mining: <PickaxeIcon />,
   ai: "✦",
   settings: "⚙",
 };
@@ -30,7 +53,7 @@ function Shell() {
   if (app.phase === "onboarding") return <Onboarding />;
   if (app.phase === "locked") return <Unlock />;
 
-  const sections = app.runtime?.sections() ?? [];
+  const sections = (app.runtime?.sections() ?? []).filter((sec) => sec.id !== "mining" || !!app.minerAddress);
   const screen = (() => {
     switch (tab) {
       case "send":
@@ -39,6 +62,8 @@ function Shell() {
         return <Receive onBack={() => setTab("home")} />;
       case "history":
         return <History />;
+      case "mining":
+        return <Mining />;
       case "ai":
         return <Ai />;
       case "settings":
@@ -62,7 +87,7 @@ function Shell() {
               }`}
             >
               {tab === sec.id && <span className="absolute inset-x-4 top-0 h-px bg-keryx-bright shadow-cta" />}
-              <span className="text-lg leading-none">{ICON[sec.id]}</span>
+              <span className="flex h-[18px] items-center text-lg leading-none">{ICON[sec.id]}</span>
               {sec.label}
             </button>
           ))}

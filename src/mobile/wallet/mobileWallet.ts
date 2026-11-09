@@ -3,7 +3,7 @@
 // only ever receives public addresses and a signed tx.
 
 import * as kaspa from "../../sdk/kaspa.js";
-import type { AiProvider, AiProviders, ChainProvider, HistoryEntry, RichTx, Utxo } from "../chain";
+import type { AiProvider, AiProviders, ChainProvider, HistoryEntry, HolderRewardStatus, RichTx, ServiceStanding, Utxo } from "../chain";
 import { signSpend, signConsolidate, consolidateInfo, COINBASE_MATURITY } from "../chain";
 import type { ConsolidateInfo } from "../chain";
 export type { ConsolidateInfo } from "../chain";
@@ -51,12 +51,6 @@ import {
   hasActiveConsolidation,
   type ConsolidateSession,
 } from "./consolidateSession";
-import {
-  miningSummary,
-  holderKeepBps,
-  nextHolderBracket,
-  type MiningSummary,
-} from "../mining";
 
 // Same key the desktop wallet + seedVault use, so the encrypted blob is shared/mirrorable.
 const SEED_KEY = "keryx.wallet.seed.v1";
@@ -84,14 +78,6 @@ export interface ConsolidateResult {
   remaining: number; // mature UTXOs left after the whole run (0/1 = fully consolidated)
   totalInputs: number; // total coins swept across all batches
   totalFeeSompi: bigint; // total network fee across all batches
-}
-
-export interface MiningStats extends MiningSummary {
-  balanceSompi: bigint;
-  /** Holder-reward keep rate (basis points) at the current balance vs windowed production. */
-  holderKeepBps: number;
-  /** Next bracket up + the total balance needed to reach it, or null if already at 100%. */
-  next: { keepBps: number; needBalanceSompi: bigint } | null;
 }
 
 // Backstop for the auto-loop (each batch nets ≥ −1 UTXO, so a real run terminates well before this).
@@ -219,6 +205,7 @@ export class MobileWallet {
   lock(): void {
     this.addresses = null;
     this.sessionPhrase = null;
+    this.miningAddress = null;
   }
 
   /** Phrase for signing: from `password` when one is given, else the unlocked session's. */
@@ -323,26 +310,6 @@ export class MobileWallet {
     const res = await this.chain.broadcast(signed.broadcastBody);
     if (!res.ok) throw new Error(res.error ?? "Broadcast failed.");
     return { txId: res.transactionId || signed.txId, feeSompi: signed.feeSompi };
-  }
-
-  /**
-   * Read-only mining insight (no keys, no broadcast): how much this wallet has mined recently, how
-   * many rewards are still maturing, and the exact HOLDER-REWARD keep rate for the current balance vs
-   * windowed production (see `mining.ts`). Lets a miner see if they're burning part of the reward by
-   * not holding enough KRX, and how much more to hold to reach the next bracket.
-   */
-  async miningStats(): Promise<MiningStats> {
-    if (!this.addresses) throw new Error("Wallet is locked.");
-    const [utxos, info] = await Promise.all([this.gatherUtxos(), this.chain.getInfo()]);
-    const balanceSompi = utxos.reduce((s, u) => s + u.amountSompi, 0n);
-    const oneSubsidy = info.blockRewardSompi ?? 0n;
-    const summary = miningSummary(utxos, info.lastDaaScore, oneSubsidy);
-    return {
-      ...summary,
-      balanceSompi,
-      holderKeepBps: holderKeepBps(balanceSompi, summary.windowProductionSompi),
-      next: nextHolderBracket(balanceSompi, summary.windowProductionSompi),
-    };
   }
 
   /** Read-only consolidate sizing for the confirm screen (no keys, no broadcast). */
@@ -843,6 +810,42 @@ export class MobileWallet {
       n++;
     }
     return n;
+  }
+
+  private miningAddress: string | null = null;
+
+  /**
+   * The wallet address the node currently credits with production (primary receive first), or null.
+   * Remembered so later polls are a single read.
+   */
+  async findMiningAddress(): Promise<string | null> {
+    if (!this.addresses || !this.chain.getHolderReward) return null;
+    const read = (a: string) => this.chain.getHolderReward!(a).catch(() => null);
+    if (this.miningAddress) {
+      const r = await read(this.miningAddress);
+      if (r && r.isMiner && r.production24hSompi > 0n) return this.miningAddress;
+      this.miningAddress = null;
+    }
+    const all = this.allAddresses;
+    const found = await pmap(all, 6, read);
+    const i = found.findIndex((r) => !!r && r.isMiner && r.production24hSompi > 0n);
+    this.miningAddress = i >= 0 ? all[i] : null;
+    return this.miningAddress;
+  }
+
+  /** Holder reward, service standing and inferences served of a mining address (node figures). */
+  async minerStatus(address: string): Promise<{
+    holder: HolderRewardStatus;
+    standing: ServiceStanding | null;
+    served: { served: number; answered: number } | null;
+  }> {
+    if (!this.chain.getHolderReward) throw new Error("This network connection cannot read mining status.");
+    const [holder, standing, served] = await Promise.all([
+      this.chain.getHolderReward(address),
+      this.chain.getServiceStanding ? this.chain.getServiceStanding(address).catch(() => null) : Promise.resolve(null),
+      this.chain.getInferencesServed ? this.chain.getInferencesServed(address).catch(() => null) : Promise.resolve(null),
+    ]);
+    return { holder, standing, served };
   }
 
   /** Miners currently serving private requests, per model. */

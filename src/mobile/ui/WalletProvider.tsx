@@ -15,9 +15,8 @@ import { saveOverviewCache, loadOverviewCache, clearOverviewCache } from "../wal
 import { addAiHistory, type AiHistoryEntry } from "../ai/history";
 import { initDurable } from "../durable";
 import { openExternalUrl, openExplorerTx as explorerTxUrl } from "../externalLinks";
-import { isMinerMode, setMinerMode as persistMinerMode } from "../minerMode";
 import { addRecent } from "../addressBook";
-import type { ConsolidateInfo, ConsolidateResult, ConsolidateProgress, MiningStats } from "../wallet/mobileWallet";
+import type { ConsolidateInfo, ConsolidateResult, ConsolidateProgress } from "../wallet/mobileWallet";
 import {
   biometricAvailable,
   isBiometricUnlockEnabled,
@@ -42,8 +41,9 @@ interface AppState {
   lastSyncTs: number | null;
   biometricReady: boolean;
   biometricEnabled: boolean;
-  minerMode: boolean;
   resumableConsolidation: boolean;
+  /** Wallet address the node credits with production right now (drives the Mining tab). */
+  minerAddress: string | null;
 }
 
 interface AppCtx extends AppState {
@@ -68,13 +68,12 @@ interface AppCtx extends AppState {
   escrowSummary: () => Promise<{ totalSompi: bigint; maturedSompi: bigint; count: number; maturedCount: number }>;
   reclaimEscrows: (password: string) => Promise<{ reclaimedSompi: bigint; txId: string | null; count: number; remaining: number }>;
   findAiResponse: (requestHash: string) => Promise<AiResponseFound | null>;
+  minerStatus: (address: string) => ReturnType<MobileWallet["minerStatus"]>;
   aiProviders: () => Promise<AiProviders>;
   readAiAnswers: (entry: AiHistoryEntry) => Promise<AiAnswerState>;
   unlockAiHistory: (password: string) => Promise<number>;
   fetchAiResult: (cid: string) => Promise<string>;
-  setMinerMode: (on: boolean) => void;
   consolidatePreview: () => Promise<ConsolidateInfo>;
-  miningStats: () => Promise<MiningStats>;
   consolidate: (password: string, onProgress?: (p: ConsolidateProgress) => void) => Promise<ConsolidateResult>;
   wipe: () => Promise<void>;
 }
@@ -129,14 +128,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     lastSyncTs: null,
     biometricReady: false,
     biometricEnabled: false,
-    minerMode: isMinerMode(),
+    minerAddress: null,
     resumableConsolidation: false,
   });
   const patch = (p: Partial<AppState>) => setS((prev) => ({ ...prev, ...p }));
 
   const lock = useCallback(() => {
     wallet?.lock();
-    patch({ phase: "locked", balanceSompi: 0n, history: [], receiveAddress: null });
+    patch({ phase: "locked", balanceSompi: 0n, history: [], receiveAddress: null, minerAddress: null });
   }, [wallet]);
 
   // Boot: only WASM + a localStorage read gate the first screen. Native plugin calls are kept OFF
@@ -226,6 +225,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // Offer to resume an interrupted consolidation (durable, chain-state-driven).
     patch({ resumableConsolidation: wallet?.hasResumableConsolidation() ?? false });
     await refresh();
+    void wallet
+      ?.findMiningAddress()
+      .then((a) => patch({ minerAddress: a }))
+      .catch(() => {});
     // Reconstruct AI history + escrow records from our own on-chain txs (covers reinstall/restore where
     // local storage was wiped). Read-only, idempotent, best-effort — never blocks the UI.
     void wallet
@@ -330,6 +333,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [wallet]
   );
 
+  const minerStatus = useCallback(
+    async (address: string) => {
+      if (!wallet) throw new Error("Wallet not ready.");
+      return wallet.minerStatus(address);
+    },
+    [wallet]
+  );
+
+  // A rig can start or stop mining while the app is open.
+  useEffect(() => {
+    if (s.phase !== "home" || !wallet) return;
+    const id = setInterval(() => {
+      void wallet
+        .findMiningAddress()
+        .then((a) => patch({ minerAddress: a }))
+        .catch(() => {});
+    }, 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [s.phase, wallet]);
+
   const aiProviders = useCallback(async () => {
     if (!wallet) throw new Error("Wallet not ready.");
     return wallet.aiProviders();
@@ -356,19 +379,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [runtime]
   );
 
-  const setMinerMode = useCallback((on: boolean) => {
-    persistMinerMode(on);
-    patch({ minerMode: on });
-  }, []);
-
   const consolidatePreview = useCallback(async () => {
     if (!wallet) throw new Error("Wallet not ready.");
     return wallet.consolidatePreview();
-  }, [wallet]);
-
-  const miningStats = useCallback(async () => {
-    if (!wallet) throw new Error("Wallet not ready.");
-    return wallet.miningStats();
   }, [wallet]);
 
   const escrowSummary = useCallback(async () => {
@@ -434,13 +447,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     escrowSummary,
     reclaimEscrows,
     findAiResponse,
+    minerStatus,
     aiProviders,
     readAiAnswers,
     unlockAiHistory,
     fetchAiResult,
-    setMinerMode,
     consolidatePreview,
-    miningStats,
     consolidate,
     wipe,
   };

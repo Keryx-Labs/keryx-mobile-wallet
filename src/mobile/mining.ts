@@ -1,7 +1,7 @@
 // Mining insight for miner-mode users. Reproduces the node's HOLDER-REWARD (ratio-reward) rule so a
 // miner can see whether they're keeping the full reward or burning part of it by not holding enough
-// KRX. Formula mirrored VERBATIM from keryx-node `params.rs`: the active table since the H4 /
-// coin_age activation is the V2 bracket set (`RATIO_REWARD_BPS_V2` / `RATIO_REWARD_THRESHOLDS_V2`).
+// KRX. Formula mirrored VERBATIM from keryx-node `params.rs`: the active table since H15 is the V3
+// bracket set (`RATIO_REWARD_BPS_V3` / `RATIO_REWARD_THRESHOLDS_V3`).
 //
 // keep_bps(balance, production): bracket i is reached iff `balance >= thresholds[i] * production`,
 // thresholds ascending, first failure ends the scan. `production` is the address's coinbase output
@@ -15,17 +15,17 @@
 import type { Utxo } from "./chain";
 import { COINBASE_MATURITY } from "./chain";
 
-export const RATIO_REWARD_THRESHOLDS_V2 = [0, 3, 7, 15, 30, 45, 60, 75, 90] as const;
-export const RATIO_REWARD_BPS_V2 = [5000, 5500, 6000, 6500, 7000, 7500, 8000, 9000, 10000] as const;
+export const RATIO_REWARD_THRESHOLDS_V3 = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120] as const;
+export const RATIO_REWARD_BPS_V3 = [500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 8500, 9000, 9500, 10000] as const;
 export const RATIO_REWARD_WINDOW_DAA = 864_000n; // 24h at 10 BPS
 export const BPS_DIVISOR = 10_000;
 
 /** Exact holder keep-rate in basis points for a balance and windowed production (both sompi). */
 export function holderKeepBps(balanceSompi: bigint, productionSompi: bigint): number {
   const prod = productionSompi > 0n ? productionSompi : 1n;
-  let bps: number = RATIO_REWARD_BPS_V2[0];
-  for (let i = 0; i < RATIO_REWARD_THRESHOLDS_V2.length; i++) {
-    if (balanceSompi >= BigInt(RATIO_REWARD_THRESHOLDS_V2[i]) * prod) bps = RATIO_REWARD_BPS_V2[i];
+  let bps: number = RATIO_REWARD_BPS_V3[0];
+  for (let i = 0; i < RATIO_REWARD_THRESHOLDS_V3.length; i++) {
+    if (balanceSompi >= BigInt(RATIO_REWARD_THRESHOLDS_V3[i]) * prod) bps = RATIO_REWARD_BPS_V3[i];
     else break;
   }
   return bps;
@@ -37,9 +37,9 @@ export function nextHolderBracket(
   productionSompi: bigint
 ): { keepBps: number; needBalanceSompi: bigint } | null {
   const prod = productionSompi > 0n ? productionSompi : 1n;
-  for (let i = 0; i < RATIO_REWARD_THRESHOLDS_V2.length; i++) {
-    const need = BigInt(RATIO_REWARD_THRESHOLDS_V2[i]) * prod;
-    if (balanceSompi < need) return { keepBps: RATIO_REWARD_BPS_V2[i], needBalanceSompi: need };
+  for (let i = 0; i < RATIO_REWARD_THRESHOLDS_V3.length; i++) {
+    const need = BigInt(RATIO_REWARD_THRESHOLDS_V3[i]) * prod;
+    if (balanceSompi < need) return { keepBps: RATIO_REWARD_BPS_V3[i], needBalanceSompi: need };
   }
   return null; // already at the top bracket (100%)
 }

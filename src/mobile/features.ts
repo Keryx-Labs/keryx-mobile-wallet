@@ -29,7 +29,7 @@ export const DEFAULT_FLAGS: FeatureFlags = {
   aiTab: true,
 };
 
-export type SectionId = "home" | "send" | "receive" | "history" | "ai" | "settings";
+export type SectionId = "home" | "send" | "receive" | "history" | "mining" | "ai" | "settings";
 
 export interface NavSection {
   id: SectionId;
@@ -44,6 +44,8 @@ export interface NavSection {
 export const SECTIONS: NavSection[] = [
   { id: "home", label: "Wallet", icon: "wallet", order: 10 },
   { id: "history", label: "Activity", icon: "history", order: 40 },
+  // Shown by the shell only while one of the wallet's addresses is mining.
+  { id: "mining", label: "Mining", icon: "pickaxe", order: 45 },
   { id: "ai", label: "AI", icon: "sparkles", order: 50, requiresFlag: "aiTab" },
   { id: "settings", label: "Settings", icon: "settings", order: 60 },
 ];

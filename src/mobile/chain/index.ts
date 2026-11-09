@@ -72,4 +72,6 @@ export type {
   AiProviders,
   SealedResponse,
   InferenceResult,
+  HolderRewardStatus,
+  ServiceStanding,
 } from "./types";

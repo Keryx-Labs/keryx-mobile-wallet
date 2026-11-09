@@ -87,18 +87,6 @@ export function Settings() {
         {showAdv && (
           <div className="mt-2 border-t border-keryx-border pt-3">
             <NodeSettings onSaved={flash} />
-            <label className="mt-3 flex items-center justify-between border-t border-keryx-border py-2">
-              <span className="text-keryx-text">I own a miner</span>
-              <input
-                type="checkbox"
-                checked={app.minerMode}
-                onChange={(e) => app.setMinerMode(e.target.checked)}
-                className="h-5 w-5 accent-[#2ee358]"
-              />
-            </label>
-            <div className="text-xs text-keryx-dim">
-              Adds a subtle Consolidate action on the wallet screen to combine many small mining payouts.
-            </div>
           </div>
         )}
       </Card>

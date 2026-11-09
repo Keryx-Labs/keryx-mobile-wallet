@@ -162,6 +162,21 @@ export class HybridProvider implements ChainProvider {
     return this.rest.getInferenceResult(txid);
   }
 
+  getHolderReward(address: string): Promise<import("./types").HolderRewardStatus> {
+    if (!this.rest.getHolderReward) return Promise.reject(new Error("The gateway does not serve mining status."));
+    return this.rest.getHolderReward(address);
+  }
+
+  getServiceStanding(address: string): Promise<import("./types").ServiceStanding> {
+    if (!this.rest.getServiceStanding) return Promise.reject(new Error("The gateway does not serve mining status."));
+    return this.rest.getServiceStanding(address);
+  }
+
+  getInferencesServed(address: string): Promise<{ served: number; answered: number }> {
+    if (!this.rest.getInferencesServed) return Promise.reject(new Error("The gateway does not serve mining status."));
+    return this.rest.getInferencesServed(address);
+  }
+
   listInferences(limit: number): Promise<InferenceRecord[]> {
     return this.rest.listInferences(limit);
   }
