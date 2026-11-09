@@ -9,10 +9,10 @@ import { secureStore } from "../secureStore";
 import { isNative } from "../platform";
 import { initWasm, verifyAddressPrefix } from "../wallet/wasm";
 import { MobileWallet } from "../wallet/mobileWallet";
-import type { AiRequestParams, AiRequestResult, AiResponseFound } from "../wallet/mobileWallet";
+import type { AiAnswerState, AiRequestParams, AiRequestResult, AiResponseFound } from "../wallet/mobileWallet";
 import { fetchIpfsText } from "../ai/ipfs";
 import { saveOverviewCache, loadOverviewCache, clearOverviewCache } from "../walletCache";
-import { addAiHistory } from "../ai/history";
+import { addAiHistory, type AiHistoryEntry } from "../ai/history";
 import { initDurable } from "../durable";
 import { openExternalUrl, openExplorerTx as explorerTxUrl } from "../externalLinks";
 import { isMinerMode, setMinerMode as persistMinerMode } from "../minerMode";
@@ -26,7 +26,7 @@ import {
   promptBiometric,
   friendlyBiometryError,
 } from "../biometric";
-import type { HistoryEntry } from "../chain";
+import type { AiProviders, HistoryEntry } from "../chain";
 
 export type Phase = "boot" | "onboarding" | "locked" | "home" | "error";
 
@@ -71,6 +71,10 @@ interface AppCtx extends AppState {
   reclaimEscrows: (password: string) => Promise<{ reclaimedSompi: bigint; txId: string | null; count: number; remaining: number }>;
   reclaimEscrowsWithBiometric: () => Promise<{ reclaimedSompi: bigint; txId: string | null; count: number; remaining: number }>;
   findAiResponse: (requestHash: string) => Promise<AiResponseFound | null>;
+  aiProviders: () => Promise<AiProviders>;
+  readAiAnswers: (entry: AiHistoryEntry) => Promise<AiAnswerState>;
+  unlockAiHistory: (password: string) => Promise<number>;
+  unlockAiHistoryWithBiometric: () => Promise<number>;
   fetchAiResult: (cid: string) => Promise<string>;
   setMinerMode: (on: boolean) => void;
   consolidatePreview: () => Promise<ConsolidateInfo>;
@@ -379,6 +383,39 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [wallet]
   );
 
+  const aiProviders = useCallback(async () => {
+    if (!wallet) throw new Error("Wallet not ready.");
+    return wallet.aiProviders();
+  }, [wallet]);
+
+  const readAiAnswers = useCallback(
+    async (entry: AiHistoryEntry) => {
+      if (!wallet) throw new Error("Wallet not ready.");
+      return wallet.readAiAnswers(entry);
+    },
+    [wallet]
+  );
+
+  const unlockAiHistory = useCallback(
+    async (password: string) => {
+      if (!wallet) throw new Error("Wallet not ready.");
+      return wallet.unlockAiHistory(password);
+    },
+    [wallet]
+  );
+
+  const unlockAiHistoryWithBiometric = useCallback(async () => {
+    if (!wallet || !runtime) throw new Error("Wallet not ready.");
+    let pw: string | null;
+    try {
+      pw = await unlockWithBiometrics(secureStore(runtime.native), runtime.native);
+    } catch (e) {
+      throw new Error(friendlyBiometryError(e));
+    }
+    if (!pw) throw new Error("Biometric authorization is unavailable — use your password.");
+    return wallet.unlockAiHistory(pw);
+  }, [wallet, runtime]);
+
   const fetchAiResult = useCallback(
     async (cid: string) => fetchIpfsText(cid, runtime?.native ?? false),
     [runtime]
@@ -498,6 +535,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     reclaimEscrows,
     reclaimEscrowsWithBiometric,
     findAiResponse,
+    aiProviders,
+    readAiAnswers,
+    unlockAiHistory,
+    unlockAiHistoryWithBiometric,
     fetchAiResult,
     setMinerMode,
     consolidatePreview,

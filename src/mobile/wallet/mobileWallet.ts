@@ -3,7 +3,7 @@
 // only ever receives public addresses and a signed tx.
 
 import * as kaspa from "../../sdk/kaspa.js";
-import type { AiProvider, ChainProvider, HistoryEntry, RichTx, Utxo } from "../chain";
+import type { AiProvider, AiProviders, ChainProvider, HistoryEntry, RichTx, Utxo } from "../chain";
 import { signSpend, signConsolidate, consolidateInfo, COINBASE_MATURITY } from "../chain";
 import type { ConsolidateInfo } from "../chain";
 export type { ConsolidateInfo } from "../chain";
@@ -838,6 +838,12 @@ export class MobileWallet {
       n++;
     }
     return n;
+  }
+
+  /** Miners currently serving private requests, per model. */
+  async aiProviders(): Promise<AiProviders> {
+    if (!this.chain.getAiProviders) throw new Error("This network connection cannot list AI miners.");
+    return this.chain.getAiProviders();
   }
 
   /** Reads and opens the answers of a private request from the gateway. */
