@@ -88,6 +88,11 @@ export function aiRequestHash(r: AiRequest): string {
   return bytesToHex(blake2b(serializeAiRequest(r), { dkLen: 32 }));
 }
 
+/** request_hash of an already-built payload (e.g. a sealed private request). */
+export function aiRequestHashOfPayload(payload: Uint8Array): string {
+  return bytesToHex(blake2b(payload, { dkLen: 32 }));
+}
+
 export interface AiResponse {
   requestHash: string; // hex
   challengeWindowEnd: bigint;

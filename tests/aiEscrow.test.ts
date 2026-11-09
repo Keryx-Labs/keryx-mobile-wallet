@@ -15,7 +15,10 @@ import { dirname, resolve } from "node:path";
 
 // @ts-ignore
 import * as kaspa from "../src/sdk/kaspa.js";
-import { signAiRequest, buildEscrowScriptHex, INFERENCE_VAULT_SCRIPT_HEX } from "../src/mobile/ai/tx";
+import { signAiRequest, selectRequestInputs, buildEscrowScriptHex, INFERENCE_VAULT_SCRIPT_HEX } from "../src/mobile/ai/tx";
+import { schnorr } from "@noble/curves/secp256k1.js";
+import { blake2b } from "@noble/hashes/blake2.js";
+import { bytesToHex, cohortSeed, deriveRequestSecret, hexToBytes, sealRequest } from "../src/mobile/ai/privateInference";
 import { deriveKeyMap } from "../src/mobile/wallet/derivation";
 import { MIN_AI_REQUEST_PRIORITY_FEE } from "../src/mobile/ai/payload";
 import type { Utxo } from "../src/mobile/chain";
@@ -56,18 +59,34 @@ function isP2pk(scriptHex: string): boolean {
   return b.length === 34 && b[0] === 0x20 && b[33] === 0xac;
 }
 
-function fund(address: string, krx: number): Utxo {
+function fund(address: string, krx: number, txid = "a".padEnd(64, "0"), index = 0): Utxo {
   const spk = kaspa.payToAddressScript(address);
   return {
     address,
-    transactionId: "a".padEnd(64, "0"),
-    index: 0,
+    transactionId: txid,
+    index,
     amountSompi: BigInt(Math.round(krx * 1e8)),
     scriptVersion: spk.version,
     scriptPublicKey: spk.script,
     blockDaaScore: 1n,
     isCoinbase: false,
   };
+}
+
+function sealedPayload(first: Utxo, reward: bigint, key: { toString(): string }): string {
+  const sk = new Uint8Array(32);
+  sk[31] = 7;
+  const seed = cohortSeed(first.transactionId, first.index);
+  return sealRequest({
+    modelIdHex: GLM,
+    maxTokens: 256,
+    inferenceRewardSompi: Number(reward),
+    priorityFeeSompi: Number(MIN_AI_REQUEST_PRIORITY_FEE),
+    prompt: "hello keryx",
+    recipientsHex: [bytesToHex(schnorr.getPublicKey(sk))],
+    secret: deriveRequestSecret(key.toString(), seed),
+    schedule: 2,
+  });
 }
 
 function firstKeyAndAddress() {
@@ -93,17 +112,18 @@ describe("AiRequest escrow output (UTXO escrow design)", () => {
     const priorityFee = MIN_AI_REQUEST_PRIORITY_FEE;
     const utxo = fund(address, 10); // 10 KRX
 
+    const payloadHex = sealedPayload(utxo, reward, key);
     const signed = signAiRequest({
-      utxos: [utxo],
+      inputs: [utxo],
       keys: [key],
       changeAddress: address,
       networkId: NET,
-      modelId: GLM,
-      prompt: "hello keryx",
-      maxTokens: 256,
+      payloadHex,
       rewardSompi: reward,
       priorityFeeSompi: priorityFee,
     });
+    expect(body0(signed).payload).toBe(payloadHex);
+    expect(signed.requestHash).toBe(bytesToHex(blake2b(hexToBytes(payloadHex), { dkLen: 32 })));
 
     const body = signed.broadcastBody;
     // Subnetwork must be AiRequest (0300…).
@@ -130,16 +150,47 @@ describe("AiRequest escrow output (UTXO escrow design)", () => {
     const utxo = fund(address, 1); // 1 KRX, far below a 1.7 KRX reward
     expect(() =>
       signAiRequest({
-        utxos: [utxo],
+        inputs: [utxo],
         keys: [key],
         changeAddress: address,
         networkId: NET,
-        modelId: GLM,
-        prompt: "hi",
-        maxTokens: 256,
+        payloadHex: sealedPayload(utxo, 170_000_000n, key),
         rewardSompi: 170_000_000n,
         priorityFeeSompi: MIN_AI_REQUEST_PRIORITY_FEE,
       })
     ).toThrow(/can't cover|more than/i);
   });
+
+  it("spends the preselected inputs in order, so the first one is the cohort seed", () => {
+    const { address, key } = firstKeyAndAddress();
+    const small = fund(address, 1, "c".repeat(64), 3);
+    const big = fund(address, 50, "d".repeat(64), 1);
+    const inputs = selectRequestInputs([small, big], MIN_AI_REQUEST_PRIORITY_FEE, 100_000_000n);
+    expect(inputs.map((u) => u.transactionId)).toEqual(["d".repeat(64)]);
+    const signed = signAiRequest({
+      inputs: [small, big],
+      keys: [key],
+      changeAddress: address,
+      networkId: NET,
+      payloadHex: sealedPayload(small, 100_000_000n, key),
+      rewardSompi: 100_000_000n,
+    });
+    expect(signed.broadcastBody.inputs.map((i) => [i.transaction_id, i.index])).toEqual([
+      ["c".repeat(64), 3],
+      ["d".repeat(64), 1],
+    ]);
+  });
+
+  it("skips unconfirmed UTXOs when selecting inputs", () => {
+    const { address } = firstKeyAndAddress();
+    const pending = { ...fund(address, 100, "e".repeat(64)), blockDaaScore: 0n };
+    const confirmed = fund(address, 10, "f".repeat(64));
+    expect(selectRequestInputs([pending, confirmed], MIN_AI_REQUEST_PRIORITY_FEE, 100_000_000n).map((u) => u.transactionId)).toEqual([
+      "f".repeat(64),
+    ]);
+  });
 });
+
+function body0(s: { broadcastBody: { payload: string } }) {
+  return s.broadcastBody;
+}

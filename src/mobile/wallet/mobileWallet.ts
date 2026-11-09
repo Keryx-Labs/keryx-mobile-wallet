@@ -3,13 +3,32 @@
 // only ever receives public addresses and a signed tx.
 
 import * as kaspa from "../../sdk/kaspa.js";
-import type { ChainProvider, HistoryEntry, Utxo } from "../chain";
+import type { AiProvider, ChainProvider, HistoryEntry, Utxo } from "../chain";
 import { signSpend, signConsolidate, consolidateInfo, COINBASE_MATURITY } from "../chain";
 import type { ConsolidateInfo } from "../chain";
 export type { ConsolidateInfo } from "../chain";
 import type { SecureStore } from "../secureStore";
 import { deriveAddresses, deriveKeyMap, firstReceiveAddress } from "./derivation";
-import { signAiRequest, buildEscrowScriptHex, AI_ESCROW_CSV_BLOCKS, REWARD_ROUTING_ACTIVATION_DAA } from "../ai/tx";
+import {
+  signAiRequest,
+  selectRequestInputs,
+  requestChangeFits,
+  buildEscrowScriptHex,
+  AI_ESCROW_CSV_BLOCKS,
+  REWARD_ROUTING_ACTIVATION_DAA,
+} from "../ai/tx";
+import {
+  bytesToHex,
+  cohortSeed,
+  compressPrompt,
+  deriveRequestSecret,
+  maxPrivatePromptLen,
+  maxRequestPayloadLen,
+  sealRecipients,
+  sealRequest,
+} from "../ai/privateInference";
+import { keySchedule2ActivationDaa } from "../ai/gates";
+import { MIN_AI_REQUEST_PRIORITY_FEE } from "../ai/payload";
 import { signEscrowReclaim, type EscrowUtxo } from "../chain";
 import {
   listEscrows,
@@ -86,7 +105,10 @@ export interface AiRequestResult {
   txId: string;
   requestHash: string;
   feeSompi: bigint;
-  escrowSompi: bigint; // reward locked in the escrow output (reclaimable after the CSV window)
+  escrowSompi: bigint; // reward paid into the vault (goes to the answering miner)
+  /** Outpoint of the first input (`txid ‖ index LE`), hex: re-derives the request secret. */
+  seedHex: string;
+  recipients: number;
 }
 
 export interface AiResponseFound {
@@ -544,16 +566,52 @@ export class MobileWallet {
       );
     }
 
-    const signed = signAiRequest({
-      utxos: spendable,
-      keys: Array.from(keyMap.values()),
-      changeAddress: this.addresses.receive[0],
-      networkId: this.networkId,
-      modelId: params.modelId,
-      prompt: params.prompt,
+    const priorityFee = params.priorityFeeSompi ?? MIN_AI_REQUEST_PRIORITY_FEE;
+    const inputs = selectRequestInputs(spendable, priorityFee, params.rewardSompi);
+    const totalIn = inputs.reduce((n, u) => n + u.amountSompi, 0n);
+    if (!requestChangeFits(totalIn - priorityFee - params.rewardSompi, params.rewardSompi)) {
+      throw new Error("Not enough spendable KRX for this request plus a little change. Nothing has been sent.");
+    }
+
+    if (!this.chain.getAiProviders) throw new Error("This network connection cannot list AI miners.");
+    const providers = await this.chain.getAiProviders();
+    const model = params.modelId.toLowerCase();
+    const keysOf = (list: AiProvider[]) => list.filter((p) => p.modelId === model).map((p) => p.escrowPubkey);
+    const cohort = keysOf(providers.cohort);
+    if (cohort.length === 0) throw new Error("No miner is serving this model right now. Nothing has been sent.");
+
+    const seed = cohortSeed(inputs[0].transactionId, inputs[0].index);
+    const recipients = sealRecipients(seed, cohort, keysOf(providers.window));
+    const room = maxPrivatePromptLen(recipients.length, maxRequestPayloadLen(inputs.length));
+    let prompt: string | Uint8Array = params.prompt;
+    if (new TextEncoder().encode(params.prompt).length > room) {
+      prompt = await compressPrompt(params.prompt);
+      if (prompt.length > room) throw new Error("This message is too long, even compressed. Nothing has been sent.");
+    }
+
+    const owner = this.addresses.receive[0];
+    const ownerKey = keyMap.get(owner);
+    if (!ownerKey) throw new Error("Wallet key unavailable.");
+    const daa = info.lastDaaScore > providers.virtualDaaScore ? info.lastDaaScore : providers.virtualDaaScore;
+    const payloadHex = sealRequest({
+      modelIdHex: model,
       maxTokens: params.maxTokens,
+      inferenceRewardSompi: Number(params.rewardSompi),
+      priorityFeeSompi: Number(priorityFee),
+      prompt,
+      recipientsHex: recipients,
+      secret: deriveRequestSecret(ownerKey.toString(), seed),
+      schedule: daa >= keySchedule2ActivationDaa(this.networkId) ? 2 : 1,
+    });
+
+    const signed = signAiRequest({
+      inputs,
+      keys: Array.from(keyMap.values()),
+      changeAddress: owner,
+      networkId: this.networkId,
+      payloadHex,
       rewardSompi: params.rewardSompi,
-      priorityFeeSompi: params.priorityFeeSompi,
+      priorityFeeSompi: priorityFee,
     });
 
     const res = await this.chain.broadcast(signed.broadcastBody);
@@ -573,6 +631,8 @@ export class MobileWallet {
       requestHash: signed.requestHash,
       feeSompi: signed.feeSompi,
       escrowSompi: signed.escrowSompi,
+      seedHex: bytesToHex(seed),
+      recipients: recipients.length,
     };
   }
 

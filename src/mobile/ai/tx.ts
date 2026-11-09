@@ -1,30 +1,14 @@
-// AiRequest transaction builder — builds and signs a Keryx AI inference request ENTIRELY ON DEVICE,
-// then emits a broadcast body for the REST Gateway. Same security seam as the spend signer: the
-// network layer only ever sees the resulting signed transaction (public data), never keys or seed.
+// AiRequest transaction builder: builds and signs a Keryx AI request on device and emits a broadcast
+// body for the gateway. The network layer only sees the signed transaction.
 //
-// PROTOCOL (current, "UTXO escrow" design — keryx-node consensus
-// `pipeline/virtual_processor/utxo_validation.rs::check_ai_request_tx_payload_rules`):
-//   - subnetwork 0300…, payload = [model_id:32][max_tokens:4 LE][inference_reward:8 LE][priority_fee:8 LE][prompt…]
-//   - output[1] MUST be a CSV-pay-to-pubkey escrow (script class `CsvPubKey`) worth >= inference_reward.
-//     The reward is LOCKED in this escrow output — NOT burned as fee (the old design). The escrow is a
-//     bond spendable by its pubkey holder; we set it to the requester's OWN pubkey so the funds stay in
-//     the user's control (miners are paid by the coinbase subsidy, not by spending this escrow).
-//   - the on-chain fee (inputs − outputs) only needs to cover `priority_fee` (>= MIN_AI_REQUEST_PRIORITY_FEE),
-//     which is the burned network fee.
-//   - inference_reward >= model_base + ceil(max_tokens/64) * INFERENCE_REWARD_TOKEN_STEP (enforced by the UI).
-// So we build: inputs → [output0 = change to self, output1 = escrow(reward)], fee = priority_fee (or the
-// mass minimum if higher).
+// Shape: subnetwork 0300…, payload = public header ‖ sealed envelope (see privateInference.ts),
+// output[0] = change to self, output[1] = the reward vault (>= inference_reward), fee >= priority_fee.
+// Inputs are fixed before sealing: the first one seeds the target cohort.
 
 import * as kaspa from "../../sdk/kaspa.js";
 import type { Utxo } from "../chain";
 import { buildBroadcastBody, BroadcastTx, SerializableTx, MAX_TX_INPUTS } from "../chain";
-import {
-  AI_REQUEST_SUBNETWORK_ID,
-  MIN_AI_REQUEST_PRIORITY_FEE,
-  serializeAiRequest,
-  aiRequestHash,
-  type AiRequest,
-} from "./payload";
+import { AI_REQUEST_SUBNETWORK_ID, MIN_AI_REQUEST_PRIORITY_FEE, aiRequestHashOfPayload } from "./payload";
 
 // Script opcodes for the CSV-pay-to-pubkey escrow (keryx-node crypto/txscript).
 const OP_CHECKSEQUENCEVERIFY = 0xb1;
@@ -61,15 +45,42 @@ function u64MinLeBytes(v: bigint): number[] {
 const ESCROW_SEQUENCE_BYTES = u64MinLeBytes(AI_ESCROW_CSV_BLOCKS);
 
 export interface AiRequestSpend {
-  utxos: Utxo[];
+  /** Inputs from `selectRequestInputs`, spent in this order: the first one seeds the target cohort. */
+  inputs: Utxo[];
   keys: Array<{ toString(): string } | string>;
-  changeAddress: string; // also the escrow pubkey owner (the requester)
+  changeAddress: string;
   networkId: string;
-  modelId: string;
-  prompt: string;
-  maxTokens: number;
+  /** Full AiRequest payload (public header ‖ sealed envelope), hex. */
+  payloadHex: string;
   rewardSompi: bigint;
   priorityFeeSompi?: bigint;
+}
+
+// KIP-9 storage mass bound kept below the node's standard limit (mirrors the website's wallet).
+const STORAGE_MASS_PARAMETER = 1_000_000_000_000n;
+const MASS_BUDGET = 80_000n;
+
+/** Whether a change output next to the reward vault keeps the storage mass under budget. */
+export function requestChangeFits(changeSompi: bigint, rewardSompi: bigint): boolean {
+  if (changeSompi <= 0n) return false;
+  const vaultMass = rewardSompi > 0n ? STORAGE_MASS_PARAMETER / rewardSompi : 0n;
+  return STORAGE_MASS_PARAMETER / changeSompi + vaultMass <= MASS_BUDGET;
+}
+
+/** Confirmed UTXOs, largest first, pooled until the change is large enough. Callers pass mature UTXOs. */
+export function selectRequestInputs(utxos: Utxo[], priorityFeeSompi: bigint, rewardSompi: bigint): Utxo[] {
+  const candidates = utxos
+    .filter((u) => u.blockDaaScore > 0n)
+    .sort((a, b) => (a.amountSompi < b.amountSompi ? 1 : a.amountSompi > b.amountSompi ? -1 : 0));
+  const selected: Utxo[] = [];
+  let total = 0n;
+  for (const c of candidates) {
+    if (selected.length >= MAX_TX_INPUTS) break;
+    selected.push(c);
+    total += c.amountSompi;
+    if (requestChangeFits(total - priorityFeeSompi - rewardSompi, rewardSompi)) break;
+  }
+  return selected;
 }
 
 export interface SignedAiRequest {
@@ -122,65 +133,37 @@ export function buildEscrowScriptHex(address: string): string {
   return bytesToHex(bytes);
 }
 
-/** Build + sign an AiRequest offline with the required escrow output[1]. Throws on insufficient funds. */
+/** Build + sign an AiRequest offline: output[0] = change, output[1] = the reward vault. */
 export function signAiRequest(req: AiRequestSpend): SignedAiRequest {
-  if (req.maxTokens <= 0) throw new Error("maxTokens must be greater than zero.");
   if (req.rewardSompi <= 0n) throw new Error("The inference reward must be greater than zero.");
+  if (req.inputs.length === 0) throw new Error("No spendable UTXOs.");
+  if (req.inputs.length > MAX_TX_INPUTS) {
+    throw new Error(`This request needs more than ${MAX_TX_INPUTS} UTXOs. Consolidate your funds first, then try again.`);
+  }
   const priorityFee = req.priorityFeeSompi ?? MIN_AI_REQUEST_PRIORITY_FEE;
   const reward = req.rewardSompi;
+  const payload = hexToU8(req.payloadHex);
+  const total = req.inputs.reduce((s, e) => s + e.amountSompi, 0n);
+  if (total <= reward + priorityFee) throw new Error("Your balance can't cover this AI request (reward + priority fee + change).");
 
-  const request: AiRequest = {
-    modelId: req.modelId,
-    maxTokens: req.maxTokens,
-    inferenceReward: reward,
-    priorityFee,
-    prompt: req.prompt,
-  };
-  const payloadBytes = serializeAiRequest(request);
-  const requestHash = aiRequestHash(request);
-
-  const sorted = [...req.utxos].sort((a, b) =>
-    a.amountSompi < b.amountSompi ? 1 : a.amountSompi > b.amountSompi ? -1 : 0
-  );
-  const used = sorted.slice(0, MAX_TX_INPUTS);
-  if (used.length === 0) throw new Error("No spendable UTXOs.");
-  const total = used.reduce((s, e) => s + e.amountSompi, 0n);
-
-  // The escrow (reward) is an OUTPUT; the fee only needs to cover priority_fee. Need change > 0 so the
-  // escrow lands at output[1] (consensus requires outputs[1] to be the escrow).
-  const needFloor = reward + priorityFee;
-  if (total <= needFloor) {
-    if (sorted.length > used.length) {
-      throw new Error(
-        `This request needs more than ${MAX_TX_INPUTS} UTXOs in one transaction. ` +
-          `Consolidate your funds first, then try again.`
-      );
-    }
-    throw new Error("Your balance can't cover this AI request (reward + priority fee + change).");
-  }
-
-  const entries = used.map(toEntry);
-  // H8 routed escrow: output[1] is the canonical keyless vault (reward paid to the answering miner).
-  const escrowSpk = new kaspa.ScriptPublicKey(0, INFERENCE_VAULT_SCRIPT_HEX as any);
+  const entries = req.inputs.map(toEntry);
+  const vaultSpk = new kaspa.ScriptPublicKey(0, INFERENCE_VAULT_SCRIPT_HEX as any);
 
   const build = (fee: bigint): { tx: any; change: bigint } => {
     const change = total - reward - fee;
-    // output[0] = change to self (created via createTransaction so it's a proper p2pk output),
-    // then output[1] = the escrow, set before signing so the signature covers it.
     const tx: any = kaspa.createTransaction(
       entries as any,
       [{ address: req.changeAddress, amount: change }] as any,
       0n,
-      payloadBytes as any
+      payload as any
     );
     const changeOut = tx.outputs[0];
-    tx.outputs = [changeOut, new kaspa.TransactionOutput(reward, escrowSpk)];
+    tx.outputs = [changeOut, new kaspa.TransactionOutput(reward, vaultSpk)];
     tx.subnetworkId = AI_REQUEST_SUBNETWORK_ID;
     tx.gas = 0n;
     return { tx, change };
   };
 
-  // First size with fee = priority_fee, then bump to the mass minimum if that's higher.
   let fee = priorityFee;
   let { tx, change } = build(fee);
   const massFee = (kaspa.calculateTransactionFee(req.networkId, tx) ?? 0n) as bigint;
@@ -195,16 +178,24 @@ export function signAiRequest(req: AiRequestSpend): SignedAiRequest {
   const signed = kaspa.signTransaction(tx as any, signers as any, true);
   const obj = signed.serializeToObject() as unknown as SerializableTx & { id?: string };
   const broadcastBody = buildBroadcastBody(obj);
+  const first = broadcastBody.inputs[0];
+  if (!first || first.transaction_id !== req.inputs[0].transactionId || first.index !== req.inputs[0].index) {
+    throw new Error("The request's first input changed while signing; nothing was sent.");
+  }
   return {
     txId: obj.id ?? "",
-    requestHash,
+    requestHash: aiRequestHashOfPayload(payload),
     broadcastBody,
     feeSompi: fee,
     escrowSompi: reward,
-    escrowScriptHex: INFERENCE_VAULT_SCRIPT_HEX, // routed vault; not a reclaimable CSV escrow
-    escrowSequence: 0n, // routed reward is minted to the miner, not reclaimed by the requester
-    inputCount: used.length,
+    escrowScriptHex: INFERENCE_VAULT_SCRIPT_HEX,
+    escrowSequence: 0n,
+    inputCount: req.inputs.length,
     payloadHex: broadcastBody.payload,
   };
+}
+
+function hexToU8(hex: string): Uint8Array {
+  return Uint8Array.from(hexToBytes(hex));
 }
 // end of tx.ts

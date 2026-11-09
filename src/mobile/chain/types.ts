@@ -105,8 +105,24 @@ export interface InferenceRecord {
   resultDaaScore: bigint;
 }
 
+/** A miner that serves private requests for a model (gateway `/api/v1/ai/providers`). */
+export interface AiProvider {
+  escrowPubkey: string; // x-only, hex
+  modelId: string;
+  tier: number;
+}
+
+/** Current target cohort and the providers seen over the recent sealing window. */
+export interface AiProviders {
+  virtualDaaScore: bigint;
+  cohort: AiProvider[];
+  window: AiProvider[];
+}
+
 export interface ChainProvider {
   readonly kind: "rest" | "direct" | "hybrid";
+  /** Miners a private request can be sealed to. Gateway only. */
+  getAiProviders?(): Promise<AiProviders>;
   getInfo(): Promise<NetworkInfo>;
   getBalanceSompi(address: string): Promise<bigint>;
   getUtxos(address: string): Promise<Utxo[]>;

@@ -95,6 +95,19 @@ export class RestGatewayProvider implements ChainProvider {
     };
   }
 
+  async getAiProviders(): Promise<import("./types").AiProviders> {
+    const j = await httpGetJson(this.url("/ai/providers"), this.isNative);
+    const list = (arr: any): import("./types").AiProvider[] =>
+      (Array.isArray(arr) ? arr : [])
+        .filter((p: any) => typeof p?.escrow_pubkey === "string" && /^[0-9a-f]{64}$/i.test(p.escrow_pubkey))
+        .map((p: any) => ({
+          escrowPubkey: String(p.escrow_pubkey).toLowerCase(),
+          modelId: String(p.model_id ?? "").toLowerCase(),
+          tier: Number(p.tier ?? -1),
+        }));
+    return { virtualDaaScore: toBig(j.virtual_daa_score), cohort: list(j.cohort), window: list(j.window) };
+  }
+
   async getRichTransaction(txid: string): Promise<import("./types").RichTx> {
     const j = await httpGetJson(this.url(`/transactions/${encodeURIComponent(txid)}`), this.isNative);
     const outs = Array.isArray(j.outputs) ? j.outputs : [];

@@ -21,6 +21,11 @@ import type {
   InferenceRecord,
 } from "../src/mobile/chain";
 import { AI_MODELS } from "../src/mobile/ai/models";
+import type { AiProviders } from "../src/mobile/chain";
+import { schnorr } from "@noble/curves/secp256k1.js";
+import { bytesToHex } from "../src/mobile/ai/privateInference";
+
+const TEST_ESCROW = bytesToHex(schnorr.getPublicKey(new Uint8Array(32).fill(9)));
 import { AI_REQUEST_SUBNETWORK_ID } from "../src/mobile/ai/payload";
 
 // localStorage shim (node env)
@@ -98,6 +103,14 @@ class FakeChain implements ChainProvider {
   async listInferences(_limit: number): Promise<InferenceRecord[]> {
     return this.inferences;
   }
+  providers: AiProviders = {
+    virtualDaaScore: 150_000_000n,
+    cohort: [{ escrowPubkey: TEST_ESCROW, modelId: AI_MODELS[0].id, tier: 0 }],
+    window: [],
+  };
+  async getAiProviders(): Promise<AiProviders> {
+    return this.providers;
+  }
   async broadcast(tx: BroadcastTx): Promise<BroadcastResult> {
     this.lastBody = tx;
     return { ok: true, transactionId: "fakebroadcasttxid" };
@@ -164,6 +177,21 @@ describe("MobileWallet (REST send path, real crypto)", () => {
     await expect(w.send("pw", "not-an-address", 1n)).rejects.toThrow(/invalid destination/i);
   });
 
+  it("refuses to send a request when no miner serves the model", async () => {
+    const store = memStore();
+    const ph = new MobileWallet(new FakeChain("x", 0n) as any, store, { scanWindow: 2 }).newMnemonic();
+    const probe = new MobileWallet(new FakeChain("x", 0n) as any, store, { scanWindow: 2 });
+    await probe.createOrImport("pw", ph);
+    const chain = new FakeChain(probe.receiveAddress!, 100_000_000_000n);
+    chain.providers = { ...chain.providers, cohort: [] };
+    const w = new MobileWallet(chain as any, store, { scanWindow: 2 });
+    w.unlock("pw");
+    await expect(
+      w.submitAiRequest("pw", { modelId: AI_MODELS[0].id, prompt: "hi", maxTokens: 64, rewardSompi: 50_000_000n })
+    ).rejects.toThrow(/No miner is serving/);
+    expect(chain.lastBody).toBeNull();
+  });
+
   it("submits an AI request: signed subnetwork-0300 tx with payload + escrow output[1]", async () => {
     const store = memStore();
     const ph = new MobileWallet(new FakeChain("x", 0n) as any, store, { scanWindow: 2 }).newMnemonic();
@@ -190,6 +218,10 @@ describe("MobileWallet (REST send path, real crypto)", () => {
     // The signed body is an AI-subnetwork tx carrying the request payload.
     expect(chain.lastBody!.subnetwork_id).toBe(AI_REQUEST_SUBNETWORK_ID);
     expect(chain.lastBody!.payload.startsWith(model.id)).toBe(true); // payload begins with model_id
+    expect(chain.lastBody!.payload.slice(104, 112)).toBe("004b5850"); // sealed envelope after the header
+    expect(chain.lastBody!.payload).not.toContain(Buffer.from("hello keryx").toString("hex"));
+    expect(r.seedHex).toBe("b".repeat(64) + "00000000");
+    expect(r.recipients).toBe(1);
     expect(chain.lastBody!.inputs[0].signature_script.length).toBeGreaterThan(0);
     // The reward is locked in the escrow output[1], not spent as fee (UTXO escrow design).
     expect(chain.lastBody!.outputs.length).toBe(2);

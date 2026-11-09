@@ -21,7 +21,7 @@ describe("AI model registry (H6 lineup)", () => {
       "Qwen3.5-9B",
       "GLM-4-9B-0414",
       "Gemma-4-12B",
-      "Qwen3.6-27B",
+      "Qwen3.8-27B",
       "Kimi-Linear-48B",
     ]);
     expect(AI_MODELS.map((m) => m.minRewardSompi)).toEqual([

@@ -145,6 +145,11 @@ export class HybridProvider implements ChainProvider {
     return this.rest.listRecentTransactions(limit);
   }
 
+  getAiProviders(): Promise<import("./types").AiProviders> {
+    if (!this.rest.getAiProviders) return Promise.reject(new Error("The gateway does not list AI providers."));
+    return this.rest.getAiProviders();
+  }
+
   listInferences(limit: number): Promise<InferenceRecord[]> {
     return this.rest.listInferences(limit);
   }

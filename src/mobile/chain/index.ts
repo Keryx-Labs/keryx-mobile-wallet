@@ -68,4 +68,6 @@ export type {
   RichTx,
   InferenceRecord,
   BroadcastResult,
+  AiProvider,
+  AiProviders,
 } from "./types";
