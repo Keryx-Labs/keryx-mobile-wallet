@@ -235,6 +235,8 @@ export function Ai() {
       void ensureNotifPermission(app.runtime?.native ?? false);
       reloadHistory();
     } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[AI_SUBMIT_ERROR]", e);
       setStatus("");
       setErr(e instanceof Error ? e.message : String(e));
     } finally {

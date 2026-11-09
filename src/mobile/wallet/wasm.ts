@@ -6,12 +6,24 @@
 import * as kaspa from "../../sdk/kaspa.js";
 import wasmUrl from "../../sdk/kaspa_bg.wasm?url";
 
+// One shared load: the SDK's own guard is only set once instantiation finishes, so two concurrent
+// calls (React StrictMode runs effects twice in dev) would instantiate the module twice.
+let loading: Promise<void> | null = null;
 let ready = false;
 
-export async function initWasm(): Promise<void> {
-  if (ready) return;
-  await kaspa.default(wasmUrl);
-  ready = true;
+export function initWasm(): Promise<void> {
+  if (!loading) {
+    loading = kaspa.default({ module_or_path: wasmUrl }).then(
+      () => {
+        ready = true;
+      },
+      (e: unknown) => {
+        loading = null;
+        throw e;
+      }
+    );
+  }
+  return loading;
 }
 
 export function isWasmReady(): boolean {
