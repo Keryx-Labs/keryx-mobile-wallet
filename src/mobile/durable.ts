@@ -32,13 +32,21 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   ]);
 }
 
-async function preferences(): Promise<any | null> {
-  try {
-    const mod: any = await withTimeout(import("@capacitor/preferences"), 2500);
-    return mod?.Preferences ?? null;
-  } catch {
-    return null; // web / tests / plugin unavailable
+// Capacitor plugins are proxies that answer any method name, including `then`. Resolving a promise
+// with one directly would call `Preferences.then()` as a native method, so it is always boxed.
+type PrefsBox = { P: any };
+let prefsBox: PrefsBox | null = null;
+
+async function preferences(): Promise<PrefsBox | null> {
+  if (!prefsBox) {
+    try {
+      const mod: any = await withTimeout(import("@capacitor/preferences"), 2500);
+      if (mod?.Preferences) prefsBox = { P: mod.Preferences };
+    } catch {
+      /* web / tests / plugin unavailable */
+    }
   }
+  return prefsBox;
 }
 
 /**
@@ -48,7 +56,7 @@ async function preferences(): Promise<any | null> {
  */
 export async function initDurable(): Promise<void> {
   if (initialized) return;
-  const P = await preferences();
+  const P = (await preferences())?.P;
   for (const key of DURABLE_KEYS) {
     let val: string | null = null;
     if (P) {
@@ -95,7 +103,7 @@ export async function durableSet(key: string, value: string): Promise<void> {
   } catch {
     /* ignore */
   }
-  const P = await preferences();
+  const P = (await preferences())?.P;
   if (P) {
     try {
       await P.set({ key, value });
@@ -113,7 +121,7 @@ export async function durableRemove(key: string): Promise<void> {
   } catch {
     /* ignore */
   }
-  const P = await preferences();
+  const P = (await preferences())?.P;
   if (P) {
     try {
       await P.remove({ key });
@@ -127,4 +135,5 @@ export async function durableRemove(key: string): Promise<void> {
 export function __resetDurableForTests(): void {
   cache = new Map();
   initialized = false;
+  prefsBox = null;
 }
